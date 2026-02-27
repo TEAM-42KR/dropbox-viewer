@@ -1,0 +1,2916 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Dropbox API 이미지 다운로더 (Web)</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');
+        body {
+            font-family: 'Inter', sans-serif;
+            user-select: none;
+            overflow: hidden;
+        }
+        .loader {
+            border: 4px solid #f3f3f3;
+            border-top: 4px solid #3498db;
+            border-radius: 50%;
+            width: 40px;
+            height: 40px;
+            animation: spin 1s linear infinite;
+        }
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+        
+        /* --- Views --- */
+        .view-tab.active {
+            border-color: #3b82f6;
+            color: #3b82f6;
+            font-weight: 600;
+        }
+        
+        /* --- Tree View --- */
+        .tree ul {
+            padding-left: 1rem;
+            border-left: 1px solid #e5e7eb;
+            white-space: nowrap;
+            overflow: hidden;
+            transition: max-height 0.3s ease-in-out;
+        }
+        .tree li {
+            position: relative;
+            padding-left: 0.75rem;
+        }
+        .tree li::before {
+            content: '';
+            position: absolute;
+            top: 0.875rem;
+            left: 0;
+            width: 0.5rem;
+            height: 1px;
+            background-color: #e5e7eb;
+        }
+        .tree .item-content {
+            display: flex;
+            align-items: center;
+            height: 1.75rem;
+        }
+        .tree li[data-folder-toggle] > .item-content { cursor: pointer; }
+        .tree li.collapsed > ul { max-height: 0; }
+        .tree .item-name { display: flex; align-items: center; }
+        .tree .item-checkbox { margin-right: 0.5rem; }
+        .tree .show-more-btn::before { display: none; }
+        .show-more-btn {
+            cursor: pointer;
+            padding-left: 2rem;
+            font-weight: bold;
+            color: #6b7280;
+        }
+        .show-more-btn:hover { color: #1f2937; }
+        .hidden-by-ellipsis { display: none; }
+        
+        /* --- List View --- */
+        .list-view-item {
+            display: flex;
+            align-items: center;
+            padding: 0.5rem 1rem;
+            border-bottom: 1px solid #f3f4f6;
+            cursor: pointer;
+        }
+        .list-view-item:hover {
+            background-color: #f9fafb;
+        }
+        .list-view-item.selected {
+            background-color: #eff6ff;
+        }
+        .list-view-item .item-name {
+            flex-grow: 1;
+            display: flex;
+            align-items: center;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+        }
+        .list-view-item .item-date {
+            width: 10.5rem; /* 168px */
+            color: #6b7280;
+            font-size: 0.875rem;
+            flex-shrink: 0;
+        }
+        .list-view-item .item-path {
+            color: #6b7280;
+            font-size: 0.75rem;
+            margin-left: 0.5rem;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+        }
+        .section-header {
+            cursor: pointer;
+        }
+        .show-more-indicator {
+            padding: 0.5rem 1rem;
+            color: #6b7280;
+            font-style: italic;
+            border-bottom: 1px solid #f3f4f6;
+        }
+        
+        /* --- Column View --- */
+        .column-panel {
+            min-width: 200px;
+            border-right: 1px solid #e5e7eb;
+            overflow-y: auto;
+            flex-shrink: 0;
+        }
+        .column-item {
+            display: flex;
+            align-items: center;
+            padding: 0.5rem;
+            cursor: pointer;
+            white-space: nowrap;
+        }
+        .column-item:hover {
+            background-color: #f9fafb;
+        }
+        .column-item.multi-selected {
+            background-color: #eff6ff;
+        }
+        .column-item.selected {
+            background-color: #3b82f6;
+            color: white;
+        }
+        .column-item.selected .text-red-500 {
+            color: #fca5a5; /* lighter red on blue background */
+        }
+        .column-item.selected.multi-selected {
+            background-color: #2563eb; /* A slightly different blue for clarity */
+        }
+        .column-item .item-name-wrapper {
+            flex-grow: 1;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            display: flex;
+            align-items: center;
+        }
+        .column-item .item-name {
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+        .column-item .folder-arrow {
+            margin-left: auto;
+            color: #9ca3af;
+        }
+        .column-item.selected .folder-arrow {
+            color: white;
+        }
+        
+        
+        /* --- Popover Styles --- */
+        #imagePreviewPopover {
+            width: 30vh;
+            height: 30vh;
+            pointer-events: none;
+        }
+        #imagePreviewPopover img {
+            max-width: 100%;
+            max-height: 100%;
+            border-radius: 0.375rem;
+        }
+        .popover-loader {
+            border: 3px solid #f3f3f3;
+            border-top: 3px solid #3498db;
+            border-radius: 50%;
+            width: 24px;
+            height: 24px;
+            animation: spin 1s linear infinite;
+        }
+        
+        /* --- Image Placeholder Styles --- */
+        .image-placeholder-item {
+            width: 100%;
+            padding-top: 100%;
+            position: relative;
+            background-color: #4b5563;
+            border-radius: 0.375rem;
+        }
+        .placeholder-loader {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            border: 3px solid #9ca3af;
+            border-top: 3px solid #e5e7eb;
+            border-radius: 50%;
+            width: 32px;
+            height: 32px;
+            animation: spin 1s linear infinite;
+        }
+        
+        /* --- Sort Indicator Styles --- */
+        .sort-indicator {
+            display: inline-block;
+            width: 1em;
+        }
+        .sort-asc::after {
+            content: '▲';
+            font-size: 0.7em;
+            color: #3b82f6;
+        }
+        .sort-desc::after {
+            content: '▼';
+            font-size: 0.7em;
+            color: #3b82f6;
+        }
+        
+        /* --- Highlighting Style --- */
+        mark {
+            background-color: #fef08a; /* yellow-200 */
+            padding: 0 2px;
+            border-radius: 2px;
+            color: inherit;
+        }
+        .favorite-star {
+            color: #facc15; /* yellow-400 */
+            margin-left: 4px;
+        }
+        
+        /* --- Tag Chip Style --- */
+        .tag-chip {
+            display: inline-block;
+            padding: 2px 8px;
+            font-size: 0.75rem; /* 12px */
+            font-weight: 600;
+            border-radius: 9999px; /* pill shape */
+            margin-right: 8px;
+            flex-shrink: 0; /* Prevent chip from shrinking */
+            line-height: 1.25;
+        }
+        
+        /* --- Tag Filter Chip Style --- */
+        .tag-filter-chip {
+            cursor: pointer;
+            padding: 4px 12px;
+            font-size: 0.8rem;
+            font-weight: 600;
+            border-radius: 9999px;
+            transition: all 0.2s;
+            border: 1px solid transparent;
+        }
+        .tag-filter-chip.selected {
+            box-shadow: 0 1px 3px 0 rgb(0 0 0 / 0.1), 0 1px 2px -1px rgb(0 0 0 / 0.1);
+        }
+        .tag-filter-chip.selected:hover {
+            filter: brightness(1.1);
+        }
+    </style>
+</head>
+<body class="bg-gray-100">
+    
+    <div class="flex h-screen">
+        <!-- Left Sidebar -->
+        <nav id="side-nav" class="w-96 bg-white p-6 flex-shrink-0 flex flex-col h-full overflow-y-auto border-r">
+            <div class="flex items-center justify-center mb-4">
+                <h1 class="text-2xl font-bold text-center text-gray-800">Dropbox 다운로더</h1>
+                <button id="resetAuthButton" class="ml-4 text-sm text-red-500 hover:text-red-700 font-semibold hidden" title="인증 정보를 삭제하고 다시 시작합니다.">초기화</button>
+            </div>
+            
+            <div id="authStepsContainer" class="space-y-6">
+                <div>
+                    <h2 class="text-lg font-semibold text-gray-700 mb-2">1. 인증</h2>
+                    <button id="authButton" class="w-full bg-blue-600 text-white py-3 rounded-lg font-semibold hover:bg-blue-700 transition duration-300">인증 시작</button>
+                </div>
+                <div>
+                    <h2 class="text-lg font-semibold text-gray-700 mb-2">2. 토큰 발급</h2>
+                    <div class="flex gap-2">
+                        <input type="text" id="authCodeInput" placeholder="인증 코드" class="w-full border border-gray-300 p-3 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent transition">
+                        <button id="tokenButton" class="bg-green-600 text-white py-3 px-4 rounded-lg font-semibold hover:bg-green-700 transition duration-300 flex-shrink-0">발급</button>
+                    </div>
+                </div>
+            </div>
+            
+            <div id="controlsContainer" class="hidden flex-grow flex flex-col">
+                <div class="space-y-4 flex-grow">
+                    <div>
+                        <label for="rootFolderDropdownButton" class="block text-sm font-medium text-gray-700 mb-1">업데이트 폴더 선택:</label>
+                        <div class="relative">
+                            <button id="rootFolderDropdownButton" class="w-full bg-white border border-gray-300 p-2 rounded-lg text-left flex justify-between items-center">
+                                <span id="rootFolderDropdownLabel" class="overflow-hidden whitespace-nowrap text-ellipsis">폴더 선택...</span>
+                                <svg class="w-5 h-5 text-gray-400" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor">
+                                    <path stroke-linecap="round" stroke-linejoin="round" d="M19.5 8.25l-7.5 7.5-7.5-7.5" />
+                                </svg>
+                            </button>
+                            <div id="rootFolderDropdownPanel" class="hidden absolute z-10 w-full mt-1 bg-white border border-gray-300 rounded-lg shadow-lg max-h-48 overflow-y-auto">
+                                <!-- Checkboxes will be inserted here -->
+                            </div>
+                        </div>
+                    </div>
+                    <div>
+                        <label for="extensionSelector" class="block text-sm font-medium text-gray-700 mb-1">확장자:</label>
+                        <select id="extensionSelector" class="w-full border border-gray-300 p-2 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent transition">
+                            <option value="all">모든 콘텐츠</option>
+                            <option value="webp">WebP</option>
+                            <option value="png">PNG (기타)</option>
+                            <option value="heif">HEIF</option>
+                        </select>
+                    </div>
+                    <div>
+                        <label for="searchInput" class="block text-sm font-medium text-gray-700 mb-1">파일명 또는 경로 검색:</label>
+                        <div class="relative">
+                            <input type="search" id="searchInput" placeholder="검색어로 필터링..." class="w-full border border-gray-300 p-2 rounded-lg pl-10 focus:ring-2 focus:ring-blue-500 focus:border-transparent transition">
+                            <svg class="w-5 h-5 text-gray-400 absolute left-3 top-1/2 -translate-y-1/2" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor">
+                                <path stroke-linecap="round" stroke-linejoin="round" d="M21 21l-5.197-5.197m0 0A7.5 7.5 0 105.196 5.196a7.5 7.5 0 0010.607 10.607z" />
+                            </svg>
+                        </div>
+                        <div class="flex items-center mt-2">
+                            <input type="checkbox" id="caseSensitiveCheckbox" class="h-4 w-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500">
+                            <label for="caseSensitiveCheckbox" class="ml-2 text-sm text-gray-700">대소문자 구분</label>
+                        </div>
+                    </div>
+                    <div class="flex items-center">
+                        <input type="checkbox" id="includeFoldersCheckbox" checked class="h-4 w-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500">
+                        <label for="includeFoldersCheckbox" class="ml-2 text-sm text-gray-700">폴더 포함</label>
+                    </div>
+                    <div class="flex items-center">
+                        <input type="checkbox" id="validationErrorFilterCheckbox" class="h-4 w-4 rounded border-gray-300 text-red-600 focus:ring-red-500">
+                        <label for="validationErrorFilterCheckbox" class="ml-2 text-sm text-gray-700">❗ 파일명 오류</label>
+                    </div>
+                    <div>
+                        <label class="block text-sm font-medium text-gray-700 mb-2">로케일 선택:</label>
+                        <div id="locale-checkboxes-container" class="flex flex-wrap items-center gap-x-4 gap-y-2">
+                            <div class="flex items-center font-semibold">
+                                <input type="checkbox" id="locale-all" class="h-4 w-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500" checked>
+                                <label for="locale-all" class="ml-2 text-sm">All</label>
+                            </div>
+                            <div class="flex items-center">
+                                <input type="checkbox" id="locale-ara" value="Arabic" class="locale-cb h-4 w-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500" checked>
+                                <label for="locale-ara" class="ml-2 text-sm">Arabic</label>
+                            </div>
+                            <div class="flex items-center">
+                                <input type="checkbox" id="locale-eng" value="ENG" class="locale-cb h-4 w-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500" checked>
+                                <label for="locale-eng" class="ml-2 text-sm">ENG</label>
+                            </div>
+                            <div class="flex items-center">
+                                <input type="checkbox" id="locale-kor" value="KOR" class="locale-cb h-4 w-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500" checked>
+                                <label for="locale-kor" class="ml-2 text-sm">KOR</label>
+                            </div>
+                            <div class="flex items-center">
+                                <input type="checkbox" id="locale-kor-pc" value="KOR_PC" class="locale-cb h-4 w-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500" checked>
+                                <label for="locale-kor-pc" class="ml-2 text-sm">KOR_PC</label>
+                            </div>
+                            <div class="flex items-center">
+                                <input type="checkbox" id="locale-JPN" value="JPN" class="locale-cb h-4 w-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500" checked>
+                                <label for="locale-JPN" class="ml-2 text-sm">JPN</label>
+                            </div>
+                            <div class="flex items-center">
+                                <input type="checkbox" id="locale-twn" value="TW" class="locale-cb h-4 w-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500" checked>
+                                <label for="locale-twn" class="ml-2 text-sm">TW</label>
+                            </div>
+                            <div class="flex items-center">
+                                <input type="checkbox" id="locale-common" value="COMMON" class="locale-cb h-4 w-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500" checked>
+                                <label for="locale-common" class="ml-2 text-sm">COMMON</label>
+                            </div>
+                        </div>
+                    </div>
+                    <div>
+                        <label class="block text-sm font-medium text-gray-700 mb-2">속성 필터:</label>
+                        <div id="tag-filter-container" class="flex flex-wrap gap-2">
+                            <!-- Tag chips will be dynamically inserted here -->
+                        </div>
+                    </div>
+                    <!-- Naming Convention Check Section -->
+                    <div class="pt-4 border-t">
+                        <label class="block text-sm font-medium text-gray-700 mb-1">네이밍 규칙 검증:</label>
+                        <p class="text-xs text-gray-500 mb-2">'spell-check-dictionary.txt' 파일을 자동으로 불러옵니다.</p>
+                        <div id="validationStatus" class="text-xs text-green-700 mt-1"></div>
+                        <button id="clearValidationButton" class="hidden text-xs text-red-500 hover:underline mt-1">검증 초기화</button>
+                    </div>
+                </div>
+                
+                <div class="space-y-2 pt-4 border-t mt-auto">
+                    <button id="viewHierarchyButton" class="w-full bg-gray-800 text-white py-2 rounded-lg font-semibold hover:bg-gray-900 transition duration-300 text-sm" disabled>새로고침</button>
+                    <div class="grid grid-cols-2 gap-2">
+                        <button id="downloadSelectedButton" class="w-full bg-gray-400 text-white py-2 rounded-lg font-semibold cursor-not-allowed transition-all duration-300 text-sm" disabled>다운로드</button>
+                        <button id="exportFileNamesButton" class="w-full bg-gray-400 text-white py-2 rounded-lg font-semibold cursor-not-allowed transition-all duration-300 text-sm" disabled>이름 추출 (.txt)</button>
+                    </div>
+                    <div class="grid grid-cols-2 gap-2">
+                        <button id="expandAllButton" class="w-full bg-gray-400 text-white py-2 rounded-lg font-semibold cursor-not-allowed text-sm" disabled>펼치기</button>
+                        <button id="collapseAllButton" class="w-full bg-gray-400 text-white py-2 rounded-lg font-semibold cursor-not-allowed text-sm" disabled>접기</button>
+                    </div>
+                </div>
+            </div>
+        </nav>
+        
+        <!-- Main Content -->
+        <main id="main-content" class="flex-grow p-8 h-screen bg-gray-50 flex flex-col">
+            <!-- View Tabs -->
+            <div id="view-tabs" class="flex border-b mb-2">
+                <button id="recent-view-tab" class="view-tab py-2 px-4 border-b-2 transition-colors duration-200">최근 24시간</button>
+                <button id="favorites-view-tab" class="view-tab py-2 px-4 border-b-2 transition-colors duration-200">즐겨찾기</button>
+                <button id="list-view-tab" class="view-tab py-2 px-4 border-b-2 transition-colors duration-200">리스트</button>
+                <button id="tree-view-tab" class="view-tab py-2 px-4 border-b-2 transition-colors duration-200">트리 구조</button>
+                <button id="column-view-tab" class="view-tab py-2 px-4 border-b-2 transition-colors duration-200">컬럼</button>
+            </div>
+            
+            <!-- This div will contain the views and will be scrollable -->
+            <div class="flex-grow overflow-y-auto relative">
+                <!-- Loader Overlay -->
+                <div id="loader-overlay" class="hidden absolute inset-0 bg-white bg-opacity-75 z-20 flex items-center justify-center rounded-b-lg">
+                    <div class="loader"></div>
+                </div>
+                
+                <!-- Tree View Container -->
+                <div id="tree-view-wrapper" class="h-full">
+                    <div id="hierarchyContainer" class="tree bg-white rounded-b-lg">
+                        <div id="noResultsTree" class="text-center text-gray-500 hidden p-4">검색 결과가 없습니다.</div>
+                    </div>
+                </div>
+                
+                <!-- List View Container (Used for List, Recent and Favorites views) -->
+                <div id="list-view-wrapper" class="hidden h-full flex flex-col">
+                    <div class="flex text-sm font-semibold text-gray-600 px-4 py-2 border-b bg-gray-200 items-center rounded-t-lg">
+                        <div class="w-8 flex items-center justify-center"><input type="checkbox" id="selectAllCheckbox" class="h-4 w-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500"></div>
+                        <div id="sort-by-date" class="w-40 cursor-pointer hover:text-gray-900 flex items-center">
+                            <span>수정한 날짜</span>
+                            <span id="sort-indicator-date" class="sort-indicator ml-1"></span>
+                        </div>
+                        <div id="sort-by-name" class="flex-grow cursor-pointer hover:text-gray-900 flex items-center">
+                            <span>이름</span>
+                            <span id="sort-indicator-name" class="sort-indicator ml-1"></span>
+                        </div>
+                    </div>
+                    <div id="list-view-body" class="bg-white rounded-b-lg flex-grow">
+                        <div id="noResultsList" class="text-center text-gray-500 hidden p-4">표시할 파일이 없습니다.</div>
+                    </div>
+                </div>
+                
+                <!-- Column View Container -->
+                <div id="column-view-wrapper" class="hidden h-full" tabindex="0">
+                    <div id="column-view-container" class="flex bg-white rounded-b-lg overflow-x-auto h-full">
+                        <div id="noResultsColumn" class="text-center text-gray-500 hidden p-4">표시할 항목이 없습니다.</div>
+                    </div>
+                </div>
+            </div>
+            <!-- Status Div moved to the bottom -->
+            <div id="status" class="text-sm text-gray-600 mt-4 text-center">진행 상태가 여기에 표시됩니다.</div>
+        </main>
+    </div>
+    
+    <!-- Download Modal -->
+    <div id="downloadModal" class="hidden fixed inset-0 bg-black bg-opacity-60 z-50 flex items-center justify-center p-4">
+        <div class="bg-white rounded-lg shadow-xl w-full max-w-6xl h-full max-h-[90vh] flex flex-col">
+            <div class="flex justify-between items-center p-4 border-b">
+                <div class="flex items-center gap-4">
+                    <h2 class="text-xl font-bold">다운로드된 이미지</h2>
+                    <button id="saveAllLocallyButton" class="hidden bg-blue-600 text-white py-2 px-4 rounded-lg font-semibold hover:bg-blue-700 transition duration-300 text-sm">로컬에 모두 저장</button>
+                </div>
+                <button id="closeDownloadModal" class="text-gray-500 hover:text-gray-800 text-3xl">&times;</button>
+            </div>
+            <div id="imageContainer" class="p-6 flex-grow overflow-y-auto grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-4 content-start">
+                <span id="imagePlaceholder" class="text-gray-400 col-span-full text-center self-center">다운로드된 이미지가 여기에 표시됩니다</span>
+            </div>
+            <div id="progressContainerWrapper" class="hidden p-4 border-t">
+                <div id="progressContainer" class="w-full bg-gray-200 rounded-full h-2.5 mb-2">
+                    <div id="progressBar" class="bg-blue-500 h-2.5 rounded-full transition-all duration-300" style="width: 0%"></div>
+                </div>
+                <div id="progressText" class="text-center text-sm text-gray-700"></div>
+            </div>
+        </div>
+    </div>
+    
+    
+    <div id="imagePreviewPopover" class="hidden fixed z-50 p-2 bg-white rounded-lg shadow-xl border border-gray-200 flex items-center justify-center">
+        <img id="popoverImage" src="" alt="Image Preview" class="object-contain hidden">
+        <div id="popoverLoader" class="popover-loader hidden"></div>
+        <div id="popoverError" class="text-red-500 hidden">
+            <svg xmlns="http://www.w3.org/2000/svg" class="h-8 w-8" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                <path stroke-linecap="round" stroke-linejoin="round" d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+            </svg>
+        </div>
+    </div>
+    
+    <div id="contextMenu" class="hidden fixed z-50 bg-white border border-gray-200 rounded-md shadow-lg py-1 w-52">
+        <button id="contextMenuFavorite" class="w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-100 flex items-center">
+            <!-- Content will be set dynamically -->
+        </button>
+        <button id="contextMenuDownload" class="w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-100 flex items-center">
+            <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4 mr-2" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                <path stroke-linecap="round" stroke-linejoin="round" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
+            </svg>
+            <span>다운로드</span>
+        </button>
+        <button id="contextMenuNamingTest" class="w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-100 flex items-center">
+            <span class="mr-2">🧪</span>
+            <span>네이밍 테스트</span>
+        </button>
+        <div id="contextMenuViewOptions" class="hidden border-t mt-1 pt-1">
+            <button id="contextMenuShowInTree" class="w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-100 flex items-center">
+                <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4 mr-2" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                    <path stroke-linecap="round" stroke-linejoin="round" d="M3 4a1 1 0 011-1h16a1 1 0 011 1v2a1 1 0 01-1 1H4a1 1 0 01-1-1V4zM3 10a1 1 0 011-1h16a1 1 0 011 1v2a1 1 0 01-1 1H4a1 1 0 01-1-1v-2zM3 16a1 1 0 011-1h16a1 1 0 011 1v2a1 1 0 01-1 1H4a1 1 0 01-1-1v-2z" />
+                </svg>
+                <span>트리 구조에서 보기</span>
+            </button>
+            <button id="contextMenuShowInColumn" class="w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-100 flex items-center">
+                <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4 mr-2" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                    <path stroke-linecap="round" stroke-linejoin="round" d="M8 7h12m0 0l-4-4m4 4l-4 4m0 6H4m0 0l4 4m-4-4l4-4" />
+                </svg>
+                <span>컬럼에서 보기</span>
+            </button>
+        </div>
+        
+    </div>
+    
+    <div id="namingTestModal" class="hidden fixed inset-0 bg-black bg-opacity-50 z-50 flex items-center justify-center">
+        <div class="bg-white rounded-lg shadow-xl p-6 w-full max-w-md">
+            <div class="flex justify-between items-center mb-4">
+                <h2 class="text-xl font-bold">네이밍 테스트</h2>
+                <button id="closeModalButton" class="text-gray-500 hover:text-gray-800">&times;</button>
+            </div>
+            <p>네이밍 테스트 모달 팝업입니다.</p>
+        </div>
+    </div>
+    
+    
+    <script>
+        document.addEventListener('DOMContentLoaded', () => {
+            // --- Constants and Element Selectors ---
+            const APP_KEY = "q8mrp2dy5ezycru"
+            const APP_SECRET = "r0n8qvo7mxuae85"
+            const REDIRECT_URI = window.location.origin + window.location.pathname;
+            const TEAM_ROOT_FOLDER = '/TEAM42의 팀 폴더/Mafia42/마피아 이미지';
+            
+            const LOCALE_MAP = {
+                'TW': ['twn', 'tw', '대만'],
+                'KOR': ['kor', 'kr', '한국'],
+                'ENG': ['eng', 'en', 'global'],
+                'JPN': ['jp', 'jpn', '일본'],
+                'Arabic': ['arabic', 'ar', 'arab', '아랍'],
+                'KOR_PC': ['kor_pc']
+            };
+            
+            // --- NEW: Tagging Constants ---
+            const TAG_DEFINITIONS = {
+                '컬렉션':     { keywords: ['collection'], keywords2: [], excludes:[], color: 'bg-green-200 text-gray-500' },
+                '아이템':     { keywords: ['item'], keywords2: [], excludes:['onecard2025'], color: 'bg-blue-500 text-white' },
+                '명패':     { keywords: ['item_nametag'], keywords2: [], excludes:['onecard2025'], color: 'bg-blue-400 text-white' },
+                '프레임':   { keywords: ['item_frame'], keywords2: [], excludes:['onecard2025'], color: 'bg-blue-400 text-white' },
+                '티켓':     { keywords: ['enter', 'ticket'], keywords2: [], excludes:['onecard2025'], color: 'bg-blue-300 text-white' },
+                '재료':     { keywords: ['material'], keywords2: [], excludes:['onecard2025'], color: 'bg-blue-300 text-white' },
+                '포장지':    { keywords: ['wrapper'], keywords2: [], excludes:['onecard2025'], color: 'bg-blue-300 text-white' },
+                '엽서':     { keywords: ['postcard'], keywords2: [], excludes:['onecard2025'], color: 'bg-blue-200 text-white' },
+                '이모티콘': { keywords: ['emoticon'], keywords2: [], excludes:[], color: 'bg-blue-200 text-white' },
+                '보석':     { keywords: ['gem'], keywords2: [], excludes:[], color: 'bg-blue-100 text-gray-500' },
+                '스킨':     { keywords: ['jobcell', 'jobclear', 'jobcover', 'jobmvp', 'jobpopup', 'jobsticker', 'jobthumb', 'jobcard_dialogue'], keywords2: [], excludes:['onecard2025'], color: 'bg-cyan-100 text-cyan-800' },
+                '인게임UI':     { keywords: ['ingame', 'gameplay','skillinfo'], keywords2: [], excludes:['onecard2025'], color: 'bg-gray-600 text-gray-100' },
+                '삽화':     { keywords: ['ingame_illustration'], keywords2: [], excludes:[], color: 'bg-red-100 text-red-800' },
+                '이벤트UI':     { keywords: ['onecard2025', 'lobby_bg'], keywords2: [], excludes:[], color: 'bg-red-800 text-white' },
+                '이벤트랭킹UI':     { keywords: ['onecard2025','rank'], keywords2: [], excludes:[], color: 'bg-red-800 text-white' },
+                '튜토리얼':     { keywords: ['tutorial'], keywords2: [], excludes:[], color: 'bg-red-100 text-red-600' },
+                '채널':     { keywords: ['channel_bg'], keywords2: [], excludes:[], color: 'bg-red-200 text-red-800' },
+                '패키지UI': { keywords: ['package_container', 'shop_event_package', 'package_container_info'], excludes:[], color: 'bg-orange-100 text-orange-800' }
+            };
+            
+            const authButton = document.getElementById('authButton');
+            const tokenButton = document.getElementById('tokenButton');
+            const authCodeInput = document.getElementById('authCodeInput');
+            const statusDiv = document.getElementById('status');
+            const loaderOverlay = document.getElementById('loader-overlay');
+            const searchInput = document.getElementById('searchInput');
+            const caseSensitiveCheckbox = document.getElementById('caseSensitiveCheckbox');
+            const includeFoldersCheckbox = document.getElementById('includeFoldersCheckbox');
+            const validationErrorFilterCheckbox = document.getElementById('validationErrorFilterCheckbox');
+            const extensionSelector = document.getElementById('extensionSelector');
+            const viewHierarchyButton = document.getElementById('viewHierarchyButton');
+            const downloadSelectedButton = document.getElementById('downloadSelectedButton');
+            const exportFileNamesButton = document.getElementById('exportFileNamesButton');
+            const localeCheckboxesContainer = document.getElementById('locale-checkboxes-container');
+            const localeAllCheckbox = document.getElementById('locale-all');
+            const localeCheckboxes = document.querySelectorAll('.locale-cb');
+            const expandAllButton = document.getElementById('expandAllButton');
+            const collapseAllButton = document.getElementById('collapseAllButton');
+            const resetAuthButton = document.getElementById('resetAuthButton');
+            const controlsContainer = document.getElementById('controlsContainer');
+            const tagFilterContainer = document.getElementById('tag-filter-container');
+            
+            // --- Root Folder Dropdown ---
+            const rootFolderDropdownButton = document.getElementById('rootFolderDropdownButton');
+            const rootFolderDropdownLabel = document.getElementById('rootFolderDropdownLabel');
+            const rootFolderDropdownPanel = document.getElementById('rootFolderDropdownPanel');
+            
+            // --- View Elements ---
+            const treeViewTab = document.getElementById('tree-view-tab');
+            const listViewTab = document.getElementById('list-view-tab');
+            const recentViewTab = document.getElementById('recent-view-tab');
+            const favoritesViewTab = document.getElementById('favorites-view-tab');
+            const columnViewTab = document.getElementById('column-view-tab');
+            const treeViewWrapper = document.getElementById('tree-view-wrapper');
+            const listViewWrapper = document.getElementById('list-view-wrapper');
+            const columnViewWrapper = document.getElementById('column-view-wrapper');
+            const hierarchyContainer = document.getElementById('hierarchyContainer');
+            const noResultsTree = document.getElementById('noResultsTree');
+            const listViewBody = document.getElementById('list-view-body');
+            const noResultsList = document.getElementById('noResultsList');
+            const selectAllCheckbox = document.getElementById('selectAllCheckbox');
+            const columnViewContainer = document.getElementById('column-view-container');
+            const noResultsColumn = document.getElementById('noResultsColumn');
+            
+            // --- Download Modal Elements ---
+            const downloadModal = document.getElementById('downloadModal');
+            const closeDownloadModal = document.getElementById('closeDownloadModal');
+            const imageContainer = document.getElementById('imageContainer');
+            const imagePlaceholder = document.getElementById('imagePlaceholder');
+            const progressContainerWrapper = document.getElementById('progressContainerWrapper');
+            const progressBar = document.getElementById('progressBar');
+            const progressText = document.getElementById('progressText');
+            const saveAllLocallyButton = document.getElementById('saveAllLocallyButton');
+            
+            // --- Popover Elements ---
+            const imagePreviewPopover = document.getElementById('imagePreviewPopover');
+            const popoverImage = document.getElementById('popoverImage');
+            const popoverLoader = document.getElementById('popoverLoader');
+            const popoverError = document.getElementById('popoverError');
+            
+            // --- Context Menu Elements ---
+            const contextMenu = document.getElementById('contextMenu');
+            const contextMenuFavorite = document.getElementById('contextMenuFavorite');
+            const contextMenuDownload = document.getElementById('contextMenuDownload');
+            const contextMenuNamingTest = document.getElementById('contextMenuNamingTest');
+            const contextMenuViewOptions = document.getElementById('contextMenuViewOptions');
+            const contextMenuShowInTree = document.getElementById('contextMenuShowInTree');
+            const contextMenuShowInColumn = document.getElementById('contextMenuShowInColumn');
+            
+            // --- Modal Elements ---
+            const namingTestModal = document.getElementById('namingTestModal');
+            const closeModalButton = document.getElementById('closeModalButton');
+            
+            // --- Sorting Elements ---
+            const sortByNameButton = document.getElementById('sort-by-name');
+            const sortByDateButton = document.getElementById('sort-by-date');
+            const sortIndicatorName = document.getElementById('sort-indicator-name');
+            const sortIndicatorDate = document.getElementById('sort-indicator-date');
+            
+            // --- Naming Validation Elements ---
+            const validationStatus = document.getElementById('validationStatus');
+            const clearValidationButton = document.getElementById('clearValidationButton');
+            
+            // --- State Variables ---
+            let accessToken = null;
+            let allEntries = [];
+            let hoverTimeout = null;
+            let sortState = { key: 'date', order: 'desc' };
+            let currentView = 'list';
+            let selectedPaths = new Set();
+            let selectedTags = new Set();
+            let isContextMenuOpen = false;
+            let contextMenuTargetPath = null;
+            let columnViewPath = `/`;
+            let lastListItemClicked = null;
+            let lastColumnItemClicked = null;
+            let favoritedFolders = new Map();
+            let validationNameSet = new Set();
+            let isValidationActive = false;
+            let filterByValidationError = false;
+            let rootNamespaceId = null;
+            let treeState = new Map(); // Stores collapsed state for tree view folders
+            
+            // --- Event Listeners ---
+            authButton.addEventListener('click', startAuthentication);
+            tokenButton.addEventListener('click', fetchAccessToken);
+            resetAuthButton.addEventListener('click', resetAuthentication);
+            searchInput.addEventListener('input', handleSearch);
+            caseSensitiveCheckbox.addEventListener('change', handleSearch);
+            includeFoldersCheckbox.addEventListener('change', handleSearch);
+            validationErrorFilterCheckbox.addEventListener('change', () => {
+                filterByValidationError = validationErrorFilterCheckbox.checked;
+                renderCurrentView();
+            });
+            viewHierarchyButton.addEventListener('click', viewHierarchy);
+            downloadSelectedButton.addEventListener('click', downloadSelectedFiles);
+            exportFileNamesButton.addEventListener('click', exportFileNames);
+            saveAllLocallyButton.addEventListener('click', downloadAllLocally);
+            expandAllButton.addEventListener('click', expandAllFolders);
+            collapseAllButton.addEventListener('click', collapseAllFolders);
+            sortByNameButton.addEventListener('click', () => setSortState('name'));
+            sortByDateButton.addEventListener('click', () => setSortState('date'));
+            treeViewTab.addEventListener('click', () => switchView('tree'));
+            listViewTab.addEventListener('click', () => switchView('list'));
+            recentViewTab.addEventListener('click', () => switchView('recent'));
+            favoritesViewTab.addEventListener('click', () => switchView('favorites'));
+            columnViewTab.addEventListener('click', () => switchView('column'));
+            listViewBody.addEventListener('click', handleListViewClick);
+            listViewBody.addEventListener('click', handleSectionFold);
+            listViewBody.addEventListener('change', handleSectionCheckboxChange);
+            hierarchyContainer.addEventListener('click', handleTreeViewClick);
+            columnViewContainer.addEventListener('click', handleColumnViewClick);
+            columnViewWrapper.addEventListener('keydown', handleColumnViewKeyDown);
+            selectAllCheckbox.addEventListener('click', handleSelectAllClick);
+            clearValidationButton.addEventListener('click', clearValidation);
+            
+            // Root Folder Dropdown Listener
+            rootFolderDropdownButton.addEventListener('click', () => {
+                rootFolderDropdownPanel.classList.toggle('hidden');
+            });
+            
+            // Modal Listeners
+            closeDownloadModal.addEventListener('click', () => downloadModal.classList.add('hidden'));
+            downloadModal.addEventListener('click', (e) => {
+                if (e.target === downloadModal) {
+                    downloadModal.classList.add('hidden');
+                }
+            });
+            
+            // Context Menu & Naming Modal Listeners
+            hierarchyContainer.addEventListener('contextmenu', showContextMenu);
+            listViewBody.addEventListener('contextmenu', showContextMenu);
+            columnViewContainer.addEventListener('contextmenu', showContextMenu);
+            window.addEventListener('click', (e) => {
+                hideContextMenuOnClick(e);
+                if (!rootFolderDropdownButton.contains(e.target) && !rootFolderDropdownPanel.contains(e.target)) {
+                    rootFolderDropdownPanel.classList.add('hidden');
+                }
+            });
+            contextMenuFavorite.addEventListener('click', () => {
+                if (contextMenuTargetPath) {
+                    let fullPath = contextMenuTargetPath;
+                    if ((currentView === 'tree' || currentView === 'column') && !fullPath.startsWith(TEAM_ROOT_FOLDER)) {
+                        fullPath = TEAM_ROOT_FOLDER + fullPath;
+                    }
+                    toggleFavorite(fullPath);
+                }
+                hideContextMenu();
+            });
+            contextMenuDownload.addEventListener('click', () => {
+                downloadSelectedFiles();
+                hideContextMenu();
+            });
+            contextMenuNamingTest.addEventListener('click', () => {
+                namingTestModal.classList.remove('hidden');
+                hideContextMenu();
+            });
+            contextMenuShowInTree.addEventListener('click', () => {
+                if (contextMenuTargetPath) {
+                    const shortPath = contextMenuTargetPath.startsWith(TEAM_ROOT_FOLDER)
+                    ? contextMenuTargetPath.substring(TEAM_ROOT_FOLDER.length)
+                    : contextMenuTargetPath;
+                    switchView('tree', { revealPath: shortPath });
+                }
+                hideContextMenu();
+            });
+            contextMenuShowInColumn.addEventListener('click', () => {
+                if (contextMenuTargetPath) {
+                    const shortPath = contextMenuTargetPath.startsWith(TEAM_ROOT_FOLDER)
+                    ? contextMenuTargetPath.substring(TEAM_ROOT_FOLDER.length)
+                    : contextMenuTargetPath;
+                    columnViewPath = shortPath;
+                    switchView('column');
+                }
+                hideContextMenu();
+            });
+            closeModalButton.addEventListener('click', () => namingTestModal.classList.add('hidden'));
+            namingTestModal.addEventListener('click', (e) => {
+                if (e.target === namingTestModal) {
+                    namingTestModal.classList.add('hidden');
+                }
+            });
+            
+            
+            extensionSelector.addEventListener('change', () => {
+                if (allEntries.length > 0) renderCurrentView();
+            });
+            
+            localeCheckboxes.forEach(cb => {
+                cb.addEventListener('change', () => {
+                    updateSelectAllCheckboxState();
+                    if (allEntries.length > 0) renderCurrentView();
+                });
+            });
+            
+            localeAllCheckbox.addEventListener('change', () => {
+                localeCheckboxes.forEach(cb => cb.checked = localeAllCheckbox.checked);
+                if (allEntries.length > 0) renderCurrentView();
+            });
+            
+            
+            // --- Initialization ---
+            initializeApp();
+            
+            function initializeApp() {
+                loadFavorites();
+                loadValidationDictionary();
+                renderTagFilters();
+                const urlParams = new URLSearchParams(window.location.search);
+                const authCode = urlParams.get('code');
+                const savedToken = localStorage.getItem('dropboxAccessToken');
+                
+                if (authCode) {
+                    authCodeInput.value = authCode;
+                    updateStatus("인증 코드를 확인했으며, 자동으로 토큰 발급을 시작합니다.", false);
+                    const newUrl = window.location.origin + window.location.pathname;
+                    window.history.replaceState({}, document.title, newUrl);
+                    tokenButton.click();
+                } else if (savedToken) {
+                    accessToken = savedToken;
+                    updateStatus("저장된 인증 정보로 시작합니다.", false);
+                    document.getElementById('authStepsContainer').classList.add('hidden');
+                    controlsContainer.classList.remove('hidden');
+                    resetAuthButton.classList.remove('hidden');
+                    viewHierarchyButton.disabled = false;
+                    viewHierarchyButton.classList.replace('bg-gray-800', 'bg-purple-600');
+                    fetchRootFolders();
+                }
+                
+                updateSelectAllCheckboxState();
+                updateSortIndicators();
+                switchView(currentView);
+            }
+            
+            
+            // --- Authentication Functions ---
+            function resetAuthentication() {
+                localStorage.removeItem('dropboxAccessToken');
+                localStorage.removeItem('dropboxFavorites');
+                accessToken = null;
+                window.location.href = REDIRECT_URI;
+            }
+            
+            async function startAuthentication() {
+                const codeVerifier = generateRandomString(128);
+                localStorage.setItem('dropboxCodeVerifier', codeVerifier);
+                const codeChallenge = await generateCodeChallenge(codeVerifier);
+                const scopes = [
+                "files.content.read",
+                "files.content.write",
+                "team_data.member",
+                "team_info.read",
+                "account_info.read"
+                ].join(" ");
+                const authUrl = `https://www.dropbox.com/oauth2/authorize?client_id=${APP_KEY}&response_type=code&redirect_uri=${REDIRECT_URI}&token_access_type=offline&code_challenge=${codeChallenge}&code_challenge_method=S256&scope=${scopes}`;
+                window.location.href = authUrl;
+            }
+            
+            async function fetchAccessToken() {
+                const code = authCodeInput.value;
+                const codeVerifier = localStorage.getItem('dropboxCodeVerifier');
+                if (!code) {
+                    updateStatus("오류: 인증 코드가 없습니다.", true);
+                    return;
+                }
+                setLoading(true, "액세스 토큰 발급 중...");
+                try {
+                    const params = new URLSearchParams({
+                        code: code,
+                        grant_type: 'authorization_code',
+                        redirect_uri: REDIRECT_URI,
+                        code_verifier: codeVerifier
+                    });
+                    const response = await fetch('https://api.dropboxapi.com/oauth2/token', {
+                        method: 'POST',
+                        headers: {
+                            'Authorization': 'Basic ' + btoa(`${APP_KEY}:${APP_SECRET}`),
+                            'Content-Type': 'application/x-www-form-urlencoded'
+                        },
+                        body: params
+                    });
+                    const data = await response.json();
+                    if (!response.ok) throw new Error(data.error_description || '알 수 없는 오류');
+                    
+                    accessToken = data.access_token;
+                    localStorage.setItem('dropboxAccessToken', accessToken);
+                    updateStatus("액세스 토큰 발급 성공! 공유 폴더를 확인합니다.", false);
+                    resetAuthButton.classList.remove('hidden');
+                    viewHierarchyButton.disabled = false;
+                    viewHierarchyButton.classList.replace('bg-gray-800', 'bg-purple-600');
+                    
+                    document.getElementById('authStepsContainer').classList.add('hidden');
+                    controlsContainer.classList.remove('hidden');
+                    
+                    await fetchRootFolders();
+                    
+                } catch (error) {
+                    updateStatus(`토큰 발급 또는 파일 목록 로딩 실패: ${error.message}`, true);
+                    setLoading(false);
+                }
+            }
+            
+            async function fetchRootFolders() {
+                if (!accessToken) return;
+                setLoading(true, "업데이트 폴더 목록을 불러오는 중...");
+                try {
+                    await getTeamspaceRootId();
+                    
+                    const response = await fetch('https://api.dropboxapi.com/2/files/list_folder', {
+                        method: 'POST',
+                        headers: {
+                            'Authorization': `Bearer ${accessToken}`,
+                            'Content-Type': 'application/json',
+                            'Dropbox-API-Path-Root': JSON.stringify({
+                                '.tag': 'namespace_id',
+                                'namespace_id': rootNamespaceId
+                            })
+                        },
+                        body: JSON.stringify({ path: TEAM_ROOT_FOLDER, recursive: false })
+                    });
+                    
+                    if (!response.ok) throw new Error('루트 폴더 목록 가져오기 실패');
+                    const data = await response.json();
+                    const folders = data.entries.filter(entry => entry['.tag'] === 'folder' );
+                    
+                    rootFolderDropdownPanel.innerHTML = '';
+                    folders.forEach(folder => {
+                        if (folder.name.includes('업데이트')) { 
+                            const item = document.createElement('div');
+                            item.className = 'flex items-center p-2 hover:bg-gray-100';
+                            const checkbox = document.createElement('input');
+                            checkbox.type = 'checkbox';
+                            checkbox.id = `root-folder-${folder.name}`;
+                            checkbox.value = folder.path_display;
+                            checkbox.className = 'h-4 w-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500';
+                            
+                            if (folder.name === 'Engineering Team') {
+                                checkbox.checked = true;
+                            }
+                            
+                            const label = document.createElement('label');
+                            label.htmlFor = `root-folder-${folder.name}`;
+                            label.textContent = folder.name;
+                            label.className = 'ml-2 text-sm w-full';
+                            
+                            item.appendChild(checkbox);
+                            item.appendChild(label);
+                            rootFolderDropdownPanel.appendChild(item);
+                            
+                            checkbox.addEventListener('change', () => {
+                                updateRootFolderDropdownLabel();
+                                viewHierarchy();
+                            });
+                        }   
+                    });
+                    updateStatus(`업데이트 폴더 로딩 성공`, false);
+                    updateRootFolderDropdownLabel();
+                    await viewHierarchy();
+                } catch (error) {
+                    updateStatus(`루트 폴더 로딩 실패: ${error.message}`, true);
+                } finally {
+                    setLoading(false);
+                }
+            }
+            
+            function updateRootFolderDropdownLabel() {
+                const selected = rootFolderDropdownPanel.querySelectorAll('input:checked');
+                if (selected.length === 0) {
+                    rootFolderDropdownLabel.textContent = '폴더 선택...';
+                } else if (selected.length === 1) {
+                    const fullPath = selected[0].value;
+                    rootFolderDropdownLabel.textContent = fullPath.substring(fullPath.lastIndexOf('/') + 1);
+                } else {
+                    rootFolderDropdownLabel.textContent = `${selected.length}개 폴더 선택됨`;
+                }
+            }
+            
+            async function getTeamspaceRootId() {
+                if (rootNamespaceId) return rootNamespaceId;
+                if (!accessToken) throw new Error("Authentication required.");
+                
+                try {
+                    const accountResponse = await fetch('https://api.dropboxapi.com/2/users/get_current_account', {
+                        method: 'POST',
+                        headers: { 'Authorization': `Bearer ${accessToken}` }
+                    });
+                    if (!accountResponse.ok) throw new Error('계정 정보 조회 실패');
+                    const accountData = await accountResponse.json();
+                    rootNamespaceId = accountData.root_info.root_namespace_id;
+                    console.log('🚀 . index.html . rootNamespaceId:', rootNamespaceId)
+                    return rootNamespaceId;
+                } catch (error) {
+                    updateStatus(`팀 정보 조회 실패: ${error.message}`, true);
+                    throw error;
+                }
+            }
+            
+            // --- Main Logic: Data Fetching and Rendering ---
+            async function viewHierarchy() {
+                if (!accessToken) {
+                    updateStatus("오류: 액세스 토큰이 없습니다.", true);
+                    return;
+                }
+                
+                const selectedFolders = Array.from(rootFolderDropdownPanel.querySelectorAll('input[type="checkbox"]:checked')).map(cb => cb.value);
+                
+                if (selectedFolders.length === 0) {
+                    allEntries = [];
+                    renderCurrentView();
+                    return;
+                }
+                
+                setLoading(true, "선택된 폴더의 파일 목록을 불러오는 중...");
+                
+                try {
+                    await getTeamspaceRootId();
+                    
+                    const fetchPromises = selectedFolders.map(folderPath => {
+                        return fetchAllEntriesForPath(folderPath, true);
+                    });
+                    
+                    const results = await Promise.all(fetchPromises);
+                    allEntries = results.flat().filter(entry => 
+                    entry.path_lower && entry.path_lower.startsWith(TEAM_ROOT_FOLDER.toLowerCase()) 
+                    && entry.name != 'parent_shared_folder_id' 
+                    && entry.name != 'sharing_info'
+                    );
+                    
+                    renderCurrentView();
+                    updateStatus('', false);
+                    expandAllButton.disabled = false;
+                    expandAllButton.classList.remove('bg-gray-400', 'cursor-not-allowed');
+                    expandAllButton.classList.add('bg-gray-700', 'hover:bg-gray-800');
+                    collapseAllButton.disabled = false;
+                    collapseAllButton.classList.remove('bg-gray-400', 'cursor-not-allowed');
+                    collapseAllButton.classList.add('bg-gray-700', 'hover:bg-gray-800');
+                    
+                } catch (error) {
+                    updateStatus(`폴더 처리 실패: ${error.message}`, true);
+                    allEntries = [];
+                    renderCurrentView();
+                } finally {
+                    setLoading(false);
+                }
+            }
+            
+            async function fetchAllEntriesForPath(path, isRecursive) {
+                await getTeamspaceRootId();
+                
+                let result = await fetch('https://api.dropboxapi.com/2/files/list_folder', {
+                    method: 'POST',
+                    headers: {
+                        'Authorization': `Bearer ${accessToken}`,
+                        'Content-Type': 'application/json',
+                        'Dropbox-API-Path-Root': JSON.stringify({
+                            '.tag': 'namespace_id',
+                            'namespace_id': rootNamespaceId
+                        })
+                    },
+                    body: JSON.stringify({ path: path, recursive: isRecursive, include_media_info: false })
+                });
+                
+                if (result.status === 401) {
+                    resetAuthentication();
+                    throw new Error("인증이 만료되었습니다.");
+                }
+                if (!result.ok) {
+                    const errorText = await result.text();
+                    throw new Error(`'${path}' 폴더 처리 실패: ${errorText}`);
+                }
+                
+                let data = await result.json();
+                let entries = data.entries;
+                let hasMore = data.has_more;
+                
+                while(hasMore) {
+                    result = await fetch('https://api.dropboxapi.com/2/files/list_folder/continue', {
+                        method: 'POST',
+                        headers: {
+                            'Authorization': `Bearer ${accessToken}`,
+                            'Content-Type': 'application/json',
+                            'Dropbox-API-Path-Root': JSON.stringify({
+                                '.tag': 'namespace_id',
+                                'namespace_id': rootNamespaceId
+                            })
+                        },
+                        body: JSON.stringify({ cursor: data.cursor })
+                    });
+                    if (result.status === 409) {
+                        const errorText = await result.text();
+                        console.error("Continue API 409 Error:", errorText);
+                        throw new Error("파일 목록 세션이 만료되었습니다. 새로고침 버튼을 눌러 다시 시도해주세요.");
+                    }
+                    if (!result.ok) {
+                        const errorText = await result.text();
+                        throw new Error(`파일 목록 이어받기 실패: ${errorText}`);
+                    }
+                    data = await result.json();
+                    entries = entries.concat(data.entries);
+                    hasMore = data.has_more;
+                }
+                return entries;
+            }
+            
+            function renderCurrentView() {
+                if (currentView === 'tree') {
+                    renderTreeView();
+                } else if (currentView === 'list' || currentView === 'recent' || currentView === 'favorites') {
+                    renderListView();
+                } else if (currentView === 'column') {
+                    renderColumnView();
+                }
+                updateDownloadButtonState();
+            }
+            
+            // --- View Switching Logic ---
+            function switchView(viewName, options = {}) {
+                currentView = viewName;
+                
+                treeViewWrapper.classList.add('hidden');
+                listViewWrapper.classList.add('hidden');
+                columnViewWrapper.classList.add('hidden');
+                
+                treeViewTab.classList.remove('active');
+                listViewTab.classList.remove('active');
+                recentViewTab.classList.remove('active');
+                favoritesViewTab.classList.remove('active');
+                columnViewTab.classList.remove('active');
+                
+                const includeFoldersLabel = document.querySelector('label[for="includeFoldersCheckbox"]');
+                
+                if (viewName === 'tree') {
+                    treeViewTab.classList.add('active');
+                    treeViewWrapper.classList.remove('hidden');
+                    expandAllButton.style.display = '';
+                    collapseAllButton.style.display = '';
+                    includeFoldersCheckbox.disabled = false;
+                    if (includeFoldersLabel) includeFoldersLabel.classList.remove('text-gray-400');
+                    renderTreeView();
+                    if (options.revealPath) {
+                        setTimeout(() => revealPathInTree(options.revealPath), 0);
+                    }
+                } else if (viewName === 'list' || viewName === 'recent' || currentView === 'favorites') {
+                    if (viewName === 'list') listViewTab.classList.add('active');
+                    else if (viewName === 'recent') recentViewTab.classList.add('active');
+                    else favoritesViewTab.classList.add('active');
+                    
+                    listViewWrapper.classList.remove('hidden');
+                    expandAllButton.style.display = 'none';
+                    collapseAllButton.style.display = 'none';
+                    includeFoldersCheckbox.disabled = true;
+                    if (includeFoldersLabel) includeFoldersLabel.classList.add('text-gray-400');
+                    renderListView();
+                } else if (viewName === 'column') {
+                    columnViewTab.classList.add('active');
+                    columnViewWrapper.classList.remove('hidden');
+                    expandAllButton.style.display = 'none';
+                    collapseAllButton.style.display = 'none';
+                    includeFoldersCheckbox.disabled = false;
+                    if (includeFoldersLabel) includeFoldersLabel.classList.remove('text-gray-400');
+                    renderColumnView();
+                }
+            }
+            
+            // --- Tree View Logic ---
+            function revealPathInTree(path) {
+                const targetLi = hierarchyContainer.querySelector(`li[data-path="${path}"]`);
+                if (!targetLi) return;
+                
+                let current = targetLi.parentElement.closest('li[data-folder-toggle]');
+                while (current) {
+                    current.classList.remove('collapsed');
+                    treeState.set(current.dataset.path, false); // Update state as we expand
+                    current = current.parentElement.closest('li[data-folder-toggle]');
+                }
+                
+                targetLi.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                
+                targetLi.style.transition = 'background-color 0.5s';
+                targetLi.style.backgroundColor = '#fef08a';
+                setTimeout(() => {
+                    targetLi.style.backgroundColor = '';
+                }, 2000);
+            }
+            
+            function buildHierarchyObject(entries) {
+                const hierarchy = {};
+                for (const entry of entries) {
+                    const pathParts = entry.path_display.substring(1).split('/').filter(p => p);
+                    if (pathParts.length === 0) continue;
+                    
+                    let currentLevel = hierarchy;
+                    for(let i = 0; i < pathParts.length; i++) {
+                        const part = pathParts[i];
+                        const isLastPart = i === pathParts.length - 1;
+                        
+                        if (!currentLevel[part]) {
+                            currentLevel[part] = {};
+                        }
+                        
+                        if (isLastPart) {
+                            Object.assign(currentLevel[part], entry);
+                        }
+                        currentLevel = currentLevel[part];
+                    }
+                }
+                return hierarchy;
+            }
+            
+            function renderTreeView() {
+                hierarchyContainer.innerHTML = '';
+                const entriesForHierarchy = reRootHierarchyEntries(getPrunedEntriesForHierarchy());
+                const hierarchy = buildHierarchyObject(entriesForHierarchy);
+                
+                
+                if (Object.keys(hierarchy).length === 0) {
+                    noResultsTree.textContent = searchInput.value ? '검색 결과가 없습니다.' : '표시할 폴더가 없습니다.';
+                    noResultsTree.classList.remove('hidden');
+                    hierarchyContainer.appendChild(noResultsTree);
+                    return;
+                }
+                noResultsTree.classList.add('hidden');
+                
+                const rootUl = document.createElement('ul');
+                
+                populateSubTree(hierarchy, rootUl, '');
+                hierarchyContainer.appendChild(rootUl);
+            }
+            
+            function populateSubTree(node, parentElement, parentPath) {
+                
+                const dropboxEntryKeys = new Set(['.tag', 'name', 'path_lower', 'path_display', 'id', 'server_modified', 'rev', 'size', 'is_downloadable', 'content_hash', 'parent_shared_folder_id', 'sharing_info']);
+                const childKeys = Object.keys(node).filter(key => !dropboxEntryKeys.has(key));
+                
+                childKeys.sort((a, b) => {
+                    const aIsFolder = node[a]['.tag'] !== 'file';
+                    const bIsFolder = node[b]['.tag'] !== 'file';
+                    if (aIsFolder !== bIsFolder) return aIsFolder ? -1 : 1;
+                    return a.localeCompare(b, undefined, { numeric: true });
+                });
+                
+                childKeys.forEach(key => {
+                    const childNode = node[key];
+                    const li = document.createElement('li');
+                    const currentPath = childNode.path_display || `${parentPath}/${key}`;
+                    li.dataset.path = currentPath;
+                    li.dataset.name = key;
+                    
+                    const isFolder = childNode['.tag'] !== 'file';
+                    
+                    let contentHtml = '';
+                    if (isFolder) {
+                        li.dataset.folderToggle = '';
+                        // Apply the saved collapsed state if it exists
+                        if (treeState.get(currentPath)) {
+                            li.classList.add('collapsed');
+                        }
+                        const favoriteStar = isFavorited(TEAM_ROOT_FOLDER + currentPath) ? '<span class="favorite-star">⭐</span>' : '';
+                        const highlightedName = highlightText(key, searchInput.value);
+                        contentHtml = `
+                            <div class="item-content">
+                                <input type="checkbox" class="item-checkbox mr-2 flex-shrink-0">
+                                <div class="item-name flex-grow"><span class="icon mr-2">📁</span><span class="folder-name">${highlightedName}</span>${favoriteStar}</div>
+                            </div>
+                            <ul></ul>`;
+                    } else { // File
+                        const tags = getTagsForFile(key);
+                        const tagHtml = tags.map(tag => `<span class="tag-chip ${tag.color}">${tag.name}</span>`).join('');
+                        const isValid = isFileNameValid(key);
+                        let prefix = '';
+                        if (!isValid) {
+                            const invalidParts = getInvalidFileNameParts(key);
+                            if (invalidParts.length > 0) {
+                                const tooltipText = `"${invalidParts.join(', ')}"에 오타 가능성이 있습니다.`;
+                                prefix = `<span title="${tooltipText}">❗ </span>`;
+                            } else {
+                                prefix = '❗ ';
+                            }
+                        }
+                        const finalNameHtml = getHighlightedName(key, searchInput.value);
+                        const isImage = /\.(jpg|jpeg|png|webp|gif|heic|heif)$/.test(key);
+                        const icon = isImage ? '🖼️' : '🗒️';
+                        contentHtml = `
+                            <div class="item-content">
+                                <input type="checkbox" class="item-checkbox mr-2 flex-shrink-0">
+                                <div class="item-name flex-grow">
+                                    <span class="icon mr-2">${icon}</span>
+                                    <span class="filename-copy cursor-pointer hover:underline" title="${key}">${tagHtml}${prefix}${finalNameHtml}</span>
+                                </div>
+                            </div>`;
+                    }
+                    if (isFolder) {
+                        const existingLi = Array.from(parentElement.children).find(el => {
+                            return el instanceof HTMLElement
+                            && el.matches(':scope > li[data-name]')
+                            && el.dataset.name === key
+                            && el.hasAttribute('data-folder-toggle');
+                        });
+                        
+                        let liToUse;
+                        if (existingLi) {
+                            liToUse = existingLi;
+                        } else {
+                            li.innerHTML = contentHtml;
+                            parentElement.appendChild(li);
+                            liToUse = li;
+                        }
+                        
+                        const ul = liToUse.querySelector('ul');
+                        populateSubTree(childNode, ul, currentPath);
+                    } else {
+                        li.innerHTML = contentHtml;
+                        parentElement.appendChild(li);
+                    }
+                });
+            }
+            
+            function handleTreeViewClick(event) {
+                const target = event.target;
+                const li = target.closest('li[data-path]');
+                if (!li) return;
+                
+                if (target.matches('.item-checkbox')) {
+                    const isChecked = target.checked;
+                    const childCheckboxes = li.querySelectorAll('.item-checkbox');
+                    childCheckboxes.forEach(cb => cb.checked = isChecked);
+                    updateParentCheckbox(li);
+                    updateDownloadButtonState();
+                    return;
+                }
+                
+                if (target.matches('.filename-copy, .filename-copy *')) {
+                    const filenameSpan = target.closest('.filename-copy');
+                    navigator.clipboard.writeText(filenameSpan.textContent.replace('❗ ', '')).then(() => {
+                        updateStatus(`'${filenameSpan.textContent.replace('❗ ', '')}' 복사 완료!`, false);
+                        setTimeout(() => updateStatus(''), 2000);
+                    });
+                    return;
+                }
+                
+                if (li.hasAttribute('data-folder-toggle')) {
+                    li.classList.toggle('collapsed');
+                    // Save the new state
+                    const path = li.dataset.path;
+                    treeState.set(path, li.classList.contains('collapsed'));
+                }
+            }
+            
+            function updateParentCheckbox(element) {
+                let current = element.parentElement.closest('li[data-folder-toggle]');
+                while (current) {
+                    const allChildCheckboxes = Array.from(current.querySelectorAll(':scope > ul > li .item-checkbox'));
+                    const checkedCount = allChildCheckboxes.filter(cb => cb.checked).length;
+                    const parentCheckbox = current.querySelector(':scope > .item-content > .item-checkbox');
+                    
+                    if (checkedCount === 0) {
+                        parentCheckbox.checked = false;
+                        parentCheckbox.indeterminate = false;
+                    } else if (checkedCount === allChildCheckboxes.length) {
+                        parentCheckbox.checked = true;
+                        parentCheckbox.indeterminate = false;
+                    } else {
+                        parentCheckbox.checked = false;
+                        parentCheckbox.indeterminate = true;
+                    }
+                    current = current.parentElement.closest('li[data-folder-toggle]');
+                }
+            }
+            
+            // --- List View Logic (also handles Recent and Favorites View) ---
+            function groupFilesByMinute(files) {
+                const groups = {};
+                const formatter = new Intl.DateTimeFormat('ko-KR', {
+                    year: 'numeric', month: '2-digit', day: '2-digit',
+                    hour: '2-digit', minute: '2-digit', hour12: false
+                });
+                
+                files.forEach(file => {
+                    if (!file.server_modified) return;
+                    const title = formatter.format(new Date(file.server_modified));
+                    if (!groups[title]) {
+                        groups[title] = [];
+                    }
+                    groups[title].push(file);
+                });
+                return groups;
+            }
+            
+            function renderListView() {
+                lastListItemClicked = null;
+                let filesToRender;
+                const baseEntries = getFilteredEntries();
+                
+                if (currentView === 'favorites') {
+                    const favoritePaths = Array.from(favoritedFolders.keys());
+                    filesToRender = baseEntries.filter(entry => 
+                    entry['.tag'] === 'file' && favoritePaths.some(favPath => entry.path_display.startsWith(favPath + '/'))
+                    );
+                } else {
+                    filesToRender = baseEntries.filter(entry => entry['.tag'] === 'file');
+                    if (currentView === 'recent') {
+                        const twelveHoursAgo = new Date(Date.now() - 24 * 60 * 60 * 1000);
+                        filesToRender = filesToRender.filter(file => 
+                        file.server_modified && new Date(file.server_modified) > twelveHoursAgo
+                        );
+                    }
+                }
+                
+                const query = searchInput.value;
+                const isCaseSensitive = caseSensitiveCheckbox.checked;
+                const searchTerms = query.split(/\s+/).filter(term => term.length > 0);
+                
+                const finalFilteredFiles = !query
+                ? filesToRender
+                : filesToRender.filter(item => {
+                    const source = item.path_display;
+                    if (isCaseSensitive) {
+                        return searchTerms.every(term => source.includes(term));
+                    } else {
+                        const lowerSource = source.toLowerCase();
+                        return searchTerms.every(term => lowerSource.includes(term.toLowerCase()));
+                    }
+                });
+                
+                finalFilteredFiles.sort((a, b) => {
+                    if (sortState.key === 'name') {
+                        return sortState.order === 'asc' 
+                        ? a.name.localeCompare(b.name, undefined, { numeric: true })
+                        : b.name.localeCompare(a.name, undefined, { numeric: true });
+                    }
+                    // Default to date sort
+                    const dateA = new Date(a.server_modified || 0).getTime();
+                    const dateB = new Date(b.server_modified || 0).getTime();
+                    return sortState.order === 'asc' ? dateA - dateB : dateB - dateA;
+                });
+                
+                if (finalFilteredFiles.length === 0 && (currentView !== 'favorites' || favoritedFolders.size === 0)) {
+                    noResultsList.textContent = currentView === 'favorites' ? '즐겨찾기한 폴더가 없습니다.' : '표시할 파일이 없습니다.';
+                    noResultsList.classList.remove('hidden');
+                    listViewBody.innerHTML = '';
+                    listViewBody.appendChild(noResultsList);
+                } else {
+                    noResultsList.classList.add('hidden');
+                    listViewBody.innerHTML = '';
+                    
+                    if (currentView === 'recent' || currentView === 'favorites') {
+                        const groupedFiles = (currentView === 'recent') 
+                        ? groupFilesByMinute(finalFilteredFiles)
+                        : finalFilteredFiles.reduce((acc, file) => {
+                            const favFolder = [...favoritedFolders.keys()].find(p => file.path_display.startsWith(p + '/'));
+                            if (favFolder) {
+                                if (!acc[favFolder]) acc[favFolder] = [];
+                                acc[favFolder].push(file);
+                            }
+                            return acc;
+                        }, {});
+                        
+                        const orderedSections = (currentView === 'recent')
+                        ? Object.keys(groupedFiles)
+                        : Object.keys(groupedFiles).sort((a,b) => (favoritedFolders.get(b) || 0) - (favoritedFolders.get(a) || 0));
+                        
+                        orderedSections.forEach(sectionTitle => {
+                            const filesInSection = groupedFiles[sectionTitle] || [];
+                            if (currentView === 'favorites' && sortState.key === 'name') {
+                                filesInSection.sort((a, b) => sortState.order === 'asc'
+                                ? a.name.localeCompare(b.name, undefined, { numeric: true })
+                                : b.name.localeCompare(a.name, undefined, { numeric: true }));
+                            }
+                            
+                            if (filesInSection.length > 0 || currentView === 'favorites') {
+                                const header = document.createElement('div');
+                                header.className = 'section-header px-4 py-2 bg-gray-100 text-sm font-bold text-gray-600 sticky top-0 z-10 flex items-center';
+                                header.dataset.sectionId = sectionTitle;
+                                const displayTitle = sectionTitle.substring(sectionTitle.lastIndexOf('/') + 1);
+                                header.innerHTML = `<span class="fold-arrow mr-2 cursor-pointer">▼</span><input type="checkbox" class="section-checkbox h-4 w-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500 mr-4"><span>${displayTitle}</span>`;
+                                listViewBody.appendChild(header);
+                                
+                                const itemsHtml = filesInSection.map(item => createListItemHtml(item, query)).join('');
+                                listViewBody.insertAdjacentHTML('beforeend', itemsHtml);
+                                
+                                if (filesInSection.length > 3) {
+                                    const showMore = document.createElement('div');
+                                    showMore.className = 'show-more-indicator hidden';
+                                    showMore.textContent = `... ${filesInSection.length - 3}개 더보기`;
+                                    listViewBody.appendChild(showMore);
+                                }
+                            }
+                        });
+                    } else { // 'list' view
+                    listViewBody.innerHTML = finalFilteredFiles.map(item => createListItemHtml(item, query)).join('');
+                }
+            }
+            updateAllSectionFolds();
+            updateSelectAllCheckboxStateForList();
+            updateSectionCheckboxStates();
+        }
+        
+        function createListItemHtml(item, query) {
+            const isChecked = selectedPaths.has(item.path_display);
+            const tags = getTagsForFile(item.name);
+            const tagHtml = tags.map(tag => `<span class="tag-chip ${tag.color}">${tag.name}</span>`).join('');
+            const icon = /\.(jpg|jpeg|png|webp|gif|heic|heif)$/i.test(item.name) ? '🖼️' : '';
+            const modifiedDate = item.server_modified 
+            ? new Date(item.server_modified).toLocaleString('ko-KR', { dateStyle: 'short', timeStyle: 'short' })
+            : '—';
+            
+            const isValid = isFileNameValid(item.name);
+            let prefix = '';
+            if (!isValid) {
+                const invalidParts = getInvalidFileNameParts(item.name);
+                if (invalidParts.length > 0) {
+                    const tooltipText = `"${invalidParts.join(', ')}"에 오타 가능성이 있습니다.`;
+                    prefix = `<span title="${tooltipText}">❗ </span>`;
+                } else {
+                    prefix = '❗ ';
+                }
+            }
+            const finalNameHtml = getHighlightedName(item.name, query);
+            
+            const relativePath = item.path_display.substring(1);
+            const highlightedPath = highlightText(relativePath, query);
+            
+            return `
+                    <div class="list-view-item ${isChecked ? 'selected' : ''}" data-path="${item.path_display}" data-name="${item.name}">
+                        <input type="checkbox" class="item-checkbox mr-4 flex-shrink-0" ${isChecked ? 'checked' : ''}>
+                        <div class="item-date">${modifiedDate}</div>
+                        <div class="item-name">
+                            <span class="icon mr-2">${icon}</span>
+                            <span class="filename-copy" title="${item.name}">${tagHtml}${prefix}${finalNameHtml}</span>
+                            <span class="item-path">${highlightedPath.replace(item.name, '')}</span>
+                        </div>
+                    </div>
+                `;
+        }
+        
+        function handleListViewClick(event) {
+            if (event.target.closest('.section-header')) return; // Clicks on header are handled by handleSectionFold
+            const itemDiv = event.target.closest('.list-view-item');
+            if (!itemDiv) return;
+            
+            const allItems = Array.from(listViewBody.querySelectorAll('.list-view-item'));
+            const currentIndex = allItems.indexOf(itemDiv);
+            
+            if (event.shiftKey && lastListItemClicked) {
+                event.preventDefault();
+                const lastIndex = allItems.indexOf(lastListItemClicked);
+                
+                const start = Math.min(currentIndex, lastIndex);
+                const end = Math.max(currentIndex, lastIndex);
+                
+                const shouldSelect = lastListItemClicked.querySelector('.item-checkbox').checked;
+                
+                for (let i = start; i <= end; i++) {
+                    const itemInRange = allItems[i];
+                    const path = itemInRange.dataset.path;
+                    const checkbox = itemInRange.querySelector('.item-checkbox');
+                    
+                    checkbox.checked = shouldSelect;
+                    if (shouldSelect) {
+                        selectedPaths.add(path);
+                        itemInRange.classList.add('selected');
+                    } else {
+                        selectedPaths.delete(path);
+                        itemInRange.classList.remove('selected');
+                    }
+                }
+            } else {
+                const path = itemDiv.dataset.path;
+                const checkbox = itemDiv.querySelector('.item-checkbox');
+                
+                if (checkbox && event.target.type !== 'checkbox') {
+                    checkbox.checked = !checkbox.checked;
+                }
+                
+                if(checkbox.checked) {
+                    selectedPaths.add(path);
+                } else {
+                    selectedPaths.delete(path);
+                }
+                itemDiv.classList.toggle('selected', checkbox.checked);
+                lastListItemClicked = itemDiv; 
+            }
+            
+            updateDownloadButtonState();
+            updateSelectAllCheckboxStateForList();
+            updateSectionCheckboxStates();
+        }
+        
+        function handleSectionFold(event) {
+            const header = event.target.closest('.section-header');
+            if (!header || event.target.classList.contains('section-checkbox')) return;
+            
+            header.classList.toggle('section-folded');
+            updateFoldingForSection(header);
+        }
+        
+        function updateFoldingForSection(header) {
+            const isFolded = header.classList.contains('section-folded');
+            let currentElement = header.nextElementSibling;
+            let itemsInFold = 0;
+            let totalItems = 0;
+            
+            const arrow = header.querySelector('.fold-arrow');
+            if (arrow) arrow.textContent = isFolded ? '▶' : '▼';
+            
+            while (currentElement && currentElement.classList.contains('list-view-item')) {
+                totalItems++;
+                currentElement.classList.toggle('hidden', isFolded && itemsInFold >= 3);
+                itemsInFold++;
+                currentElement = currentElement.nextElementSibling;
+            }
+            
+            if (currentElement && currentElement.classList.contains('show-more-indicator')) {
+                currentElement.classList.toggle('hidden', !isFolded || totalItems <= 3);
+            }
+        }
+        
+        function updateAllSectionFolds() {
+            document.querySelectorAll('.section-header').forEach(updateFoldingForSection);
+        }
+        
+        function handleSectionCheckboxChange(event) {
+            if (!event.target.classList.contains('section-checkbox')) return;
+            
+            const headerCheckbox = event.target;
+            const isChecked = headerCheckbox.checked;
+            let currentElement = headerCheckbox.closest('.section-header').nextElementSibling;
+            
+            while (currentElement && currentElement.classList.contains('list-view-item')) {
+                const itemCheckbox = currentElement.querySelector('.item-checkbox');
+                const path = currentElement.dataset.path;
+                
+                itemCheckbox.checked = isChecked;
+                currentElement.classList.toggle('selected', isChecked);
+                
+                if (isChecked) {
+                    selectedPaths.add(path);
+                } else {
+                    selectedPaths.delete(path);
+                }
+                currentElement = currentElement.nextElementSibling;
+            }
+            updateDownloadButtonState();
+            updateSelectAllCheckboxStateForList();
+        }
+        
+        function updateSectionCheckboxStates() {
+            if (currentView !== 'recent' && currentView !== 'favorites') return;
+            const headers = document.querySelectorAll('.section-header');
+            headers.forEach(header => {
+                const sectionCheckbox = header.querySelector('.section-checkbox');
+                let currentElement = header.nextElementSibling;
+                const sectionItems = [];
+                
+                while (currentElement && currentElement.classList.contains('list-view-item')) {
+                    sectionItems.push(currentElement);
+                    currentElement = currentElement.nextElementSibling;
+                }
+                
+                if (sectionItems.length === 0) {
+                    sectionCheckbox.checked = false;
+                    sectionCheckbox.indeterminate = false;
+                    sectionCheckbox.disabled = true;
+                    return;
+                };
+                sectionCheckbox.disabled = false;
+                
+                const checkedCount = sectionItems.filter(item => item.querySelector('.item-checkbox').checked).length;
+                
+                if (checkedCount === 0) {
+                    sectionCheckbox.checked = false;
+                    sectionCheckbox.indeterminate = false;
+                } else if (checkedCount === sectionItems.length) {
+                    sectionCheckbox.checked = true;
+                    sectionCheckbox.indeterminate = false;
+                } else {
+                    sectionCheckbox.checked = false;
+                    sectionCheckbox.indeterminate = true;
+                }
+            });
+        }
+        
+        function handleSelectAllClick() {
+            const isChecked = selectAllCheckbox.checked;
+            const visibleItems = listViewBody.querySelectorAll('.list-view-item');
+            
+            visibleItems.forEach(itemDiv => {
+                const checkbox = itemDiv.querySelector('.item-checkbox');
+                const path = itemDiv.dataset.path;
+                
+                checkbox.checked = isChecked;
+                itemDiv.classList.toggle('selected', isChecked);
+                
+                if (isChecked) {
+                    selectedPaths.add(path);
+                } else {
+                    selectedPaths.delete(path);
+                }
+            });
+            updateDownloadButtonState();
+            updateSectionCheckboxStates();
+        }
+        
+        function updateSelectAllCheckboxStateForList() {
+            const visibleItems = listViewBody.querySelectorAll('.list-view-item');
+            if (visibleItems.length === 0) {
+                selectAllCheckbox.checked = false;
+                selectAllCheckbox.indeterminate = false;
+                return;
+            }
+            
+            const checkedCount = Array.from(visibleItems).filter(item => item.querySelector('.item-checkbox').checked).length;
+            
+            if (checkedCount === 0) {
+                selectAllCheckbox.checked = false;
+                selectAllCheckbox.indeterminate = false;
+            } else if (checkedCount === visibleItems.length) {
+                selectAllCheckbox.checked = true;
+                selectAllCheckbox.indeterminate = false;
+            } else {
+                selectAllCheckbox.checked = false;
+                selectAllCheckbox.indeterminate = true;
+            }
+        }
+        
+        // --- Column View Logic ---
+        function renderColumnView() {
+            lastColumnItemClicked = null;
+            columnViewContainer.innerHTML = '';
+            
+            const entriesForHierarchy = reRootHierarchyEntries(getPrunedEntriesForHierarchy());
+            const hierarchy = buildHierarchyObject(entriesForHierarchy);
+            
+            if (Object.keys(hierarchy).length === 0 && (searchInput.value || isValidationActive)) {
+                noResultsColumn.textContent = '검색 또는 필터링 결과가 없습니다.';
+                noResultsColumn.classList.remove('hidden');
+                columnViewContainer.appendChild(noResultsColumn);
+                return;
+            }
+            noResultsColumn.classList.add('hidden');
+            
+            const pathParts = columnViewPath === '/' ? [] : columnViewPath.substring(1).split('/');
+            let currentNode = hierarchy;
+            
+            columnViewContainer.appendChild(createColumnPanel(hierarchy, ''));
+            
+            let cumulativePath = '';
+            for (const part of pathParts) {
+                if (currentNode && currentNode[part]) {
+                    currentNode = currentNode[part];
+                    cumulativePath += `/${part}`;
+                    if (currentNode['.tag'] !== 'file') {
+                        const panel = createColumnPanel(currentNode, cumulativePath);
+                        columnViewContainer.appendChild(panel);
+                    }
+                } else {
+                    break;
+                }
+            }
+            
+            columnViewContainer.scrollLeft = columnViewContainer.scrollWidth;
+        }
+        
+        function createColumnPanel(node, parentPath) {
+            const panel = document.createElement('div');
+            panel.className = 'column-panel';
+            const dropboxEntryKeys = new Set(['.tag', 'name', 'path_lower', 'path_display', 'id', 'server_modified', 'rev', 'size', 'is_downloadable', 'content_hash', 'parent_shared_folder_id', 'sharing_info']);
+            
+            const childrenKeys = Object.keys(node).filter(key => !dropboxEntryKeys.has(key));
+            
+            childrenKeys.sort((a, b) => {
+                const aIsFolder = node[a]['.tag'] !== 'file';
+                const bIsFolder = node[b]['.tag'] !== 'file';
+                if (aIsFolder !== bIsFolder) return aIsFolder ? -1 : 1;
+                return a.localeCompare(b, undefined, { numeric: true });
+            }).forEach(key => {
+                const childNode = node[key];
+                const item = document.createElement('div');
+                const itemPath = childNode.path_display || `${parentPath}/${key}`;
+                
+                item.className = 'column-item';
+                if (selectedPaths.has(itemPath)) {
+                    item.classList.add('multi-selected');
+                }
+                if (columnViewPath.startsWith(itemPath)) {
+                    item.classList.add('selected');
+                }
+                
+                item.dataset.path = itemPath;
+                item.dataset.name = key;
+                
+                const isFolder = childNode['.tag'] !== 'file';
+                const icon = isFolder ? '📁' : '📄';
+                const favoriteStar = isFolder && isFavorited(TEAM_ROOT_FOLDER + itemPath) ? '<span class="favorite-star">⭐</span>' : '';
+                
+                let finalNameHtml;
+                let prefix = '';
+                let tagHtml = '';
+                
+                if (isFolder) {
+                    finalNameHtml = highlightText(key, searchInput.value);
+                } else {
+                    const tags = getTagsForFile(key);
+                    tagHtml = tags.map(tag => `<span class="tag-chip ${tag.color}">${tag.name}</span>`).join('');
+                    const isValid = isFileNameValid(key);
+                    if (!isValid) {
+                        const invalidParts = getInvalidFileNameParts(key);
+                        if (invalidParts.length > 0) {
+                            const tooltipText = `"${invalidParts.join(', ')}"에 오타 가능성이 있습니다.`;
+                            prefix = `<span title="${tooltipText}">❗ </span>`;
+                        } else {
+                            prefix = '❗ ';
+                        }
+                    }
+                    finalNameHtml = getHighlightedName(key, searchInput.value);
+                }
+                
+                item.innerHTML = `
+                        <div class="item-name-wrapper">
+                            <span class="icon mr-2">${icon}</span>
+                            <span class="item-name">${tagHtml}${prefix}${finalNameHtml}</span>
+                            ${favoriteStar}
+                        </div>
+                        ${isFolder ? '<span class="folder-arrow">&gt;</span>' : ''}
+                    `;
+                panel.appendChild(item);
+            });
+            return panel;
+        }
+        
+        function handleColumnViewClick(event) {
+            const targetItem = event.target.closest('.column-item');
+            if (!targetItem) return;
+            
+            const path = targetItem.dataset.path;
+            
+            if (event.shiftKey && lastColumnItemClicked && lastColumnItemClicked.parentElement === targetItem.parentElement) {
+                event.preventDefault();
+                const allPanelItems = Array.from(targetItem.parentElement.querySelectorAll('.column-item'));
+                const currentIndex = allPanelItems.indexOf(targetItem);
+                const lastIndex = allPanelItems.indexOf(lastColumnItemClicked);
+                const start = Math.min(currentIndex, lastIndex);
+                const end = Math.max(currentIndex, lastIndex);
+                
+                for (let i = start; i <= end; i++) {
+                    selectedPaths.add(allPanelItems[i].dataset.path);
+                }
+            } else if (event.ctrlKey || event.metaKey) {
+                if (selectedPaths.has(path)) {
+                    selectedPaths.delete(path);
+                } else {
+                    selectedPaths.add(path);
+                }
+                lastColumnItemClicked = targetItem;
+            } else {
+                selectedPaths.clear();
+                selectedPaths.add(path);
+                columnViewPath = path;
+                lastColumnItemClicked = targetItem;
+            }
+            
+            renderColumnView();
+            updateDownloadButtonState();
+        }
+        
+        function handleColumnViewKeyDown(event) {
+            const { key } = event;
+            if (!['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight'].includes(key)) return;
+            
+            event.preventDefault();
+            
+            const selectedItem = columnViewContainer.querySelector('.column-item.selected');
+            if (!selectedItem) {
+                const firstItem = columnViewContainer.querySelector('.column-item');
+                if(firstItem) {
+                    columnViewPath = firstItem.dataset.path;
+                    renderColumnView();
+                    updateDownloadButtonState();
+                }
+                return;
+            }
+            
+            if (key === 'ArrowUp' || key === 'ArrowDown') {
+                const sibling = key === 'ArrowUp' ? selectedItem.previousElementSibling : selectedItem.nextElementSibling;
+                if (sibling) {
+                    columnViewPath = sibling.dataset.path;
+                    selectedPaths.clear();
+                    selectedPaths.add(columnViewPath);
+                    lastColumnItemClicked = sibling;
+                    renderColumnView();
+                    updateDownloadButtonState();
+                }
+            } else if (key === 'ArrowRight') {
+                const isFolder = selectedItem.querySelector('.folder-arrow');
+                if (isFolder) {
+                    const nextPanel = selectedItem.closest('.column-panel').nextElementSibling;
+                    if (nextPanel) {
+                        const firstItem = nextPanel.querySelector('.column-item');
+                        if (firstItem) {
+                            columnViewPath = firstItem.dataset.path;
+                            selectedPaths.clear();
+                            selectedPaths.add(columnViewPath);
+                            lastColumnItemClicked = firstItem;
+                            renderColumnView();
+                            updateDownloadButtonState();
+                        }
+                    }
+                }
+            } else if (key === 'ArrowLeft') {
+                const pathParts = columnViewPath.substring(1).split('/');
+                if (pathParts.length > 1) {
+                    pathParts.pop();
+                    columnViewPath = `/${pathParts.join('/')}`;
+                    selectedPaths.clear();
+                    selectedPaths.add(columnViewPath);
+                    renderColumnView();
+                    const newSelectedItem = columnViewContainer.querySelector(`.column-item[data-path="${columnViewPath}"]`);
+                    lastColumnItemClicked = newSelectedItem;
+                    updateDownloadButtonState();
+                }
+            }
+        }
+        
+        
+        // --- Common Logic (Filtering, Downloading, etc.) ---
+        function getFilteredEntries() {
+            const selectedLocales = Array.from(localeCheckboxes)
+            .filter(cb => cb.checked)
+            .map(cb => cb.value);
+            let filtered = filterEntriesByLocale(allEntries, selectedLocales);
+            
+            const type = extensionSelector.value;
+            if (type !== 'all') {
+                if (type === 'webp') filtered = filtered.filter(e => e.path_lower.includes('/webp/'));
+                else if (type === 'heif') filtered = filtered.filter(e => e.path_lower.includes('/heif/'));
+                else if (type === 'png') filtered = filtered.filter(e => !e.path_lower.includes('/webp/') && !e.path_lower.includes('/heif/'));
+            }
+            
+            if (filterByValidationError) {
+                filtered = filtered.filter(entry =>
+                entry['.tag'] === 'file' && !isFileNameValid(entry.name)
+                );
+            }
+            
+            if (selectedTags.size > 0) {
+                filtered = filtered.filter(entry => {
+                    if (entry['.tag'] === 'folder') {
+                        return true;
+                    }
+                    const tags = getTagsForFile(entry.name);
+                    if (tags.length === 0) return false;
+                    return tags.some(tag => selectedTags.has(tag.name));
+                });
+            }
+            
+            return filtered;
+        }
+        
+        function getPrunedEntriesForHierarchy() {
+            let baseEntries = getFilteredEntries();
+            const query = searchInput.value;
+            const isCaseSensitive = caseSensitiveCheckbox.checked;
+            const includeFolders = includeFoldersCheckbox.checked;
+            
+            if (!query) {
+                return includeFolders ? baseEntries : baseEntries.filter(e => e['.tag'] === 'file');
+            }
+            
+            const searchTerms = query.split(/\s+/).filter(term => term.length > 0);
+            
+            const matchingEntries = baseEntries.filter(entry => {
+                if (entry['.tag'] === 'folder' && !includeFolders) {
+                    return false;
+                }
+                const source = entry.path_display;
+                
+                if (isCaseSensitive) {
+                    return searchTerms.every(term => source.includes(term));
+                } else {
+                    const lowerSource = source.toLowerCase();
+                    return searchTerms.every(term => lowerSource.includes(term.toLowerCase()));
+                }
+            });
+            
+            const requiredPaths = new Set();
+            matchingEntries.forEach(entry => {
+                let parts = entry.path_display.substring(1).split('/');
+                for (let i = parts.length; i > 0; i--) {
+                    const ancestorPath = '/' + parts.slice(0, i).join('/');
+                    requiredPaths.add(ancestorPath);
+                }
+            });
+            
+            return allEntries.filter(entry => requiredPaths.has(entry.path_display)); // Use allEntries to rebuild the tree structure
+        }
+        
+        function getFilesToDownload() {
+            const filesToDownload = new Set();
+            let selectionSource = new Set();
+            
+            if (currentView === 'tree') {
+                hierarchyContainer.querySelectorAll('li .item-checkbox:checked').forEach(cb => {
+                    selectionSource.add(cb.closest('li').dataset.path);
+                });
+            } else {
+                selectionSource = selectedPaths;
+            }
+            
+            const needsPathReconstruction = currentView === 'tree' || currentView === 'column';
+            
+            selectionSource.forEach(path => {
+                const fullPath = (needsPathReconstruction && !path.startsWith(TEAM_ROOT_FOLDER)) 
+                ? TEAM_ROOT_FOLDER + path 
+                : path;
+                
+                const entry = allEntries.find(e => e.path_display === fullPath);
+                if (entry) {
+                    if (entry['.tag'] === 'file') {
+                        filesToDownload.add(fullPath);
+                    } else {
+                        allEntries.forEach(subEntry => {
+                            if (subEntry['.tag'] === 'file' && subEntry.path_display.startsWith(fullPath + '/')) {
+                                filesToDownload.add(subEntry.path_display);
+                            }
+                        });
+                    }
+                }
+            });
+            
+            return Array.from(filesToDownload);
+        }
+        
+        async function downloadSelectedFiles() {
+            if (!accessToken) {
+                updateStatus("오류: 액세스 토큰이 없습니다.", true);
+                return;
+            }
+            
+            const filePathsToDownload = getFilesToDownload();
+            
+            if (filePathsToDownload.length === 0) {
+                updateStatus(`다운로드할 파일을 선택해주세요.`, false);
+                return;
+            }
+            
+            downloadModal.classList.remove('hidden');
+            resetUIForDownload();
+            imagePlaceholder.classList.add('hidden');
+            progressContainerWrapper.classList.remove('hidden');
+            
+            filePathsToDownload.forEach(path => {
+                const placeholder = document.createElement('div');
+                placeholder.className = 'image-placeholder-item';
+                placeholder.dataset.path = path;
+                const loader = document.createElement('div');
+                loader.className = 'placeholder-loader';
+                placeholder.appendChild(loader);
+                imageContainer.appendChild(placeholder);
+            });
+            
+            const totalFiles = filePathsToDownload.length;
+            let downloadedCount = 0;
+            let successCount = 0;
+            
+            progressBar.style.width = '0%';
+            progressText.textContent = `0 / ${totalFiles}`;
+            updateStatus(`${totalFiles}개의 파일을 다운로드합니다...`);
+            
+            const updateProgress = () => {
+                downloadedCount++;
+                const percentage = (downloadedCount / totalFiles) * 100;
+                progressBar.style.width = `${percentage}%`;
+                progressText.textContent = `${downloadedCount} / ${totalFiles}`;
+            };
+            
+            const BATCH_SIZE = 5;
+            for (let i = 0; i < filePathsToDownload.length; i += BATCH_SIZE) {
+                const batch = filePathsToDownload.slice(i, i + BATCH_SIZE);
+                const downloadPromises = batch.map(path => 
+                fetch('https://content.dropboxapi.com/2/files/download', {
+                    method: 'POST',
+                    headers: {
+                        'Authorization': `Bearer ${accessToken}`,
+                        'Dropbox-API-Arg': escapeDropboxApiArg(JSON.stringify({ path: path })),
+                        'Dropbox-API-Path-Root': JSON.stringify({
+                            '.tag': 'namespace_id',
+                            'namespace_id': rootNamespaceId
+                        })
+                    }
+                })
+                .then(response => {
+                    if (response.ok) return response.blob();
+                    return Promise.reject(new Error(`다운로드 실패`));
+                })
+                .then(blob => {
+                    displayImage(blob, path.substring(path.lastIndexOf('/') + 1), path);
+                    successCount++;
+                })
+                .catch(error => console.error(error))
+                .finally(() => updateProgress())
+                );
+                await Promise.all(downloadPromises);
+            }
+            
+            updateStatus(`총 ${totalFiles}개 파일 중 ${successCount}개 다운로드 완료.`, false);
+            if(successCount > 0) {
+                saveAllLocallyButton.classList.remove('hidden');
+            }
+        }
+        
+        // --- Popover Logic ---
+        const popoverHandler = (event) => {
+            const target = event.target.closest('.filename-copy, .folder-name, .column-item .item-name');
+            if (target && !isContextMenuOpen) {
+                clearTimeout(hoverTimeout);
+                hoverTimeout = setTimeout(() => showPreviewPopover(event, target), 300);
+            }
+        };
+        const popoverClearHandler = (event) => {
+            const target = event.target.closest('.filename-copy, .folder-name, .column-item .item-name');
+            if (target) {
+                clearTimeout(hoverTimeout);
+                hidePreviewPopover();
+            }
+        };
+        hierarchyContainer.addEventListener('mouseover', popoverHandler);
+        hierarchyContainer.addEventListener('mouseout', popoverClearHandler);
+        listViewBody.addEventListener('mouseover', popoverHandler);
+        listViewBody.addEventListener('mouseout', popoverClearHandler);
+        columnViewContainer.addEventListener('mouseover', popoverHandler);
+        columnViewContainer.addEventListener('mouseout', popoverClearHandler);
+        
+        document.addEventListener('mousemove', (e) => {
+            if (!imagePreviewPopover.classList.contains('hidden')) {
+                positionPopover(e);
+            }
+        });
+        
+        async function showPreviewPopover(event, target) {
+            if(isContextMenuOpen) return;
+            
+            const itemElement = target.closest('[data-path]');
+            if (!itemElement) return;
+            
+            const shortPath = itemElement.dataset.path;
+            const name = itemElement.dataset.name.toLowerCase();
+            
+            const isFolder = itemElement.hasAttribute('data-folder-toggle') || 
+            (itemElement.classList.contains('column-item') && itemElement.querySelector('.folder-arrow'));
+            const isImage = /\.(jpg|jpeg|png|webp|gif|heic|heif)$/.test(name);
+            
+            if (!isImage || isFolder) return;
+            
+            positionPopover(event);
+            imagePreviewPopover.classList.remove('hidden');
+            popoverImage.classList.add('hidden');
+            popoverError.classList.add('hidden');
+            popoverLoader.classList.remove('hidden');
+            
+            const needsPathReconstruction = currentView === 'tree' || currentView === 'column';
+            const fullPathForAPI = needsPathReconstruction ? TEAM_ROOT_FOLDER + shortPath : shortPath;
+            
+            try {
+                const response = await fetch('https://content.dropboxapi.com/2/files/get_thumbnail_v2', {
+                    method: 'POST',
+                    headers: {
+                        'Authorization': `Bearer ${accessToken}`,
+                        'Dropbox-API-Path-Root': JSON.stringify({
+                            '.tag': 'namespace_id',
+                            'namespace_id': rootNamespaceId
+                        }),
+                        'Dropbox-API-Arg': escapeDropboxApiArg(JSON.stringify({ resource: { '.tag': 'path', path: fullPathForAPI }, size: { '.tag': 'w256h256' } }))
+                    }
+                });
+                if (!response.ok) throw new Error('Failed to fetch thumbnail');
+                const blob = await response.blob();
+                const imageUrl = URL.createObjectURL(blob);
+                popoverImage.src = imageUrl;
+                popoverImage.onload = () => {
+                    popoverLoader.classList.add('hidden');
+                    popoverImage.classList.remove('hidden');
+                    positionPopover(event);
+                    URL.revokeObjectURL(imageUrl);
+                };
+            } catch (error) {
+                console.error('Error getting thumbnail:', error);
+                popoverLoader.classList.add('hidden');
+                popoverError.classList.remove('hidden');
+            }
+        }
+        
+        function positionPopover(e) {
+            const offsetX = 15, offsetY = 15;
+            let left = e.clientX + offsetX, top = e.clientY + offsetY;
+            if (left + imagePreviewPopover.offsetWidth > window.innerWidth) left = e.clientX - imagePreviewPopover.offsetWidth - offsetX;
+            if (top + imagePreviewPopover.offsetHeight > window.innerHeight) top = e.clientY - imagePreviewPopover.offsetHeight - offsetY;
+            imagePreviewPopover.style.left = `${left}px`;
+            imagePreviewPopover.style.top = `${top}px`;
+        }
+        
+        function hidePreviewPopover() {
+            imagePreviewPopover.classList.add('hidden');
+            if (popoverImage.src.startsWith('blob:')) URL.revokeObjectURL(popoverImage.src);
+            popoverImage.src = '';
+        }
+        
+        // --- Context Menu Logic ---
+        function showContextMenu(event) {
+            event.preventDefault();
+            hidePreviewPopover();
+            isContextMenuOpen = true;
+            
+            const targetHeader = event.target.closest('.section-header');
+            const targetItem = event.target.closest('.list-view-item, li[data-path], .column-item');
+            
+            if (!targetHeader && !targetItem) {
+                hideContextMenu();
+                return;
+            }
+            
+            // Reset menu visibility
+            contextMenuFavorite.style.display = 'none';
+            contextMenuDownload.style.display = 'none';
+            contextMenuNamingTest.style.display = 'none';
+            contextMenuViewOptions.classList.add('hidden');
+            contextMenuShowInTree.style.display = 'none';
+            contextMenuShowInColumn.style.display = 'none';
+            
+            if (targetHeader && currentView === 'favorites') {
+                contextMenuTargetPath = targetHeader.dataset.sectionId;
+                contextMenuFavorite.style.display = 'flex';
+                contextMenuFavorite.innerHTML = `<span class="mr-2">⭐</span> <span>즐겨찾기 해제</span>`;
+            } else if (targetItem) {
+                contextMenuTargetPath = targetItem.dataset.path; // Keep original path for selection and navigation
+                
+                const isFolder = targetItem.hasAttribute('data-folder-toggle') || (targetItem.classList.contains('column-item') && targetItem.querySelector('.folder-arrow'));
+                const isFile = !isFolder;
+                
+                contextMenuDownload.style.display = 'flex';
+                
+                if (isFolder) {
+                    contextMenuFavorite.style.display = 'flex';
+                    contextMenuNamingTest.style.display = 'flex';
+                    
+                    // Create a full path just for the favorite check
+                    let fullPathForFavoriteCheck = contextMenuTargetPath;
+                    if ((currentView === 'tree' || currentView === 'column') && !fullPathForFavoriteCheck.startsWith(TEAM_ROOT_FOLDER)) {
+                        fullPathForFavoriteCheck = TEAM_ROOT_FOLDER + fullPathForFavoriteCheck;
+                    }
+                    
+                    if (isFavorited(fullPathForFavoriteCheck)) {
+                        contextMenuFavorite.innerHTML = `<span class="mr-2">⭐</span> <span>즐겨찾기 해제</span>`;
+                    } else {
+                        contextMenuFavorite.innerHTML = `<span class="mr-2">✩</span> <span>즐겨찾기 추가</span>`;
+                    }
+                }
+                
+                if (isFile) {
+                    let optionsVisible = false;
+                    if (currentView !== 'tree') {
+                        contextMenuShowInTree.style.display = 'flex';
+                        optionsVisible = true;
+                    }
+                    if (currentView !== 'column') {
+                        contextMenuShowInColumn.style.display = 'flex';
+                        optionsVisible = true;
+                    }
+                    if (optionsVisible) {
+                        contextMenuViewOptions.classList.remove('hidden');
+                    }
+                }
+                
+                
+                if (!selectedPaths.has(contextMenuTargetPath)) {
+                    if (currentView === 'column') {
+                        selectedPaths.clear();
+                        selectedPaths.add(contextMenuTargetPath);
+                        renderColumnView();
+                    } else {
+                        const checkbox = targetItem.querySelector('.item-checkbox');
+                        if (checkbox) {
+                            document.querySelectorAll('.item-checkbox:checked').forEach(cb => cb.checked = false);
+                            document.querySelectorAll('.list-view-item.selected').forEach(item => item.classList.remove('selected'));
+                            selectedPaths.clear();
+                            checkbox.checked = true;
+                            if (currentView === 'list' || currentView === 'recent' || currentView === 'favorites') {
+                                targetItem.classList.add('selected');
+                                selectedPaths.add(targetItem.dataset.path);
+                            } else if (currentView === 'tree') {
+                                updateParentCheckbox(targetItem);
+                            }
+                            updateSectionCheckboxStates();
+                        }
+                    }
+                }
+                updateDownloadButtonState();
+            } else {
+                hideContextMenu();
+                return;
+            }
+            
+            const { clientX: mouseX, clientY: mouseY } = event;
+            const { normalizedX, normalizedY } = normalizePosition(mouseX, mouseY);
+            contextMenu.style.top = `${normalizedY}px`;
+            contextMenu.style.left = `${normalizedX}px`;
+            contextMenu.classList.remove('hidden');
+        }
+        
+        function hideContextMenu() {
+            isContextMenuOpen = false;
+            contextMenu.classList.add('hidden');
+        }
+        
+        function hideContextMenuOnClick(event) {
+            if (!contextMenu.contains(event.target)) {
+                hideContextMenu();
+            }
+        }
+        
+        function normalizePosition(mouseX, mouseY) {
+            const { innerWidth: windowWidth, innerHeight: windowHeight } = window;
+            const menu = contextMenu;
+            const menuWidth = menu.offsetWidth;
+            const menuHeight = menu.offsetHeight;
+            
+            let normalizedX = mouseX;
+            let normalizedY = mouseY;
+            
+            if (mouseX + menuWidth > windowWidth) {
+                normalizedX = windowWidth - menuWidth - 5;
+            }
+            if (mouseY + menuHeight > windowHeight) {
+                normalizedY = windowHeight - menuHeight - 5;
+            }
+            return { normalizedX, normalizedY };
+        }
+        
+        // --- Search Logic ---
+        function handleSearch() {
+            renderCurrentView();
+        }
+        
+        // --- Sorting Functions ---
+        function setSortState(newKey) {
+            if (sortState.key === newKey) {
+                sortState.order = sortState.order === 'asc' ? 'desc' : 'asc';
+            } else {
+                sortState.key = newKey;
+                sortState.order = newKey === 'date' ? 'desc' : 'asc';
+            }
+            updateSortIndicators();
+            if (allEntries.length > 0) {
+                renderCurrentView();
+            }
+        }
+        
+        function updateSortIndicators() {
+            sortIndicatorName.className = 'sort-indicator ml-1';
+            sortIndicatorDate.className = 'sort-indicator ml-1';
+            if (sortState.key === 'name') {
+                sortIndicatorName.classList.add(sortState.order === 'asc' ? 'sort-asc' : 'sort-desc');
+            } else {
+                sortIndicatorDate.classList.add(sortState.order === 'asc' ? 'sort-asc' : 'sort-desc');
+            }
+        }
+        
+        // --- Favorites Logic ---
+        function loadFavorites() {
+            const favs = localStorage.getItem('dropboxFavorites');
+            if (favs) {
+                favoritedFolders = new Map(JSON.parse(favs));
+            }
+        }
+        
+        function saveFavorites() {
+            localStorage.setItem('dropboxFavorites', JSON.stringify(Array.from(favoritedFolders.entries())));
+        }
+        
+        function isFavorited(path) {
+            return favoritedFolders.has(path);
+        }
+        
+        function toggleFavorite(path) {
+            if (isFavorited(path)) {
+                favoritedFolders.delete(path);
+            } else {
+                favoritedFolders.set(path, Date.now());
+            }
+            saveFavorites();
+            renderCurrentView(); // Re-render to show star updates
+        }
+        
+        // --- Naming Validation Logic ---
+        async function loadValidationDictionary() {
+            try {
+                const response = await fetch('spell-check-dictionary.txt');
+                if (!response.ok) {
+                    throw new Error(`파일을 불러올 수 없습니다: ${response.statusText}`);
+                }
+                const content = await response.text();
+                const names = content.split(/\r?\n/).map(line => line.trim()).filter(line => line.length > 0);
+                validationNameSet = new Set(names);
+                isValidationActive = true;
+                validationStatus.textContent = `규칙 파일 로드됨: ${validationNameSet.size}개 항목`;
+                validationStatus.classList.remove('text-red-700');
+                validationStatus.classList.add('text-green-700');
+                clearValidationButton.classList.remove('hidden');
+                renderCurrentView();
+            } catch (error) {
+                validationStatus.textContent = `규칙 파일 로딩 실패: ${error.message}`;
+                validationStatus.classList.remove('text-green-700');
+                validationStatus.classList.add('text-red-700');
+                isValidationActive = false;
+            }
+        }
+        
+        function clearValidation() {
+            isValidationActive = false;
+            validationNameSet.clear();
+            validationStatus.textContent = '검증 비활성화됨. 다시 활성화하려면 새로고침하세요.';
+            clearValidationButton.classList.add('hidden');
+            renderCurrentView();
+        }
+        
+        function isFileNameValid(fileName) {
+            // Only validate image files. Non-image files are considered valid.
+            const isImage = /\.(jpg|jpeg|png|webp|gif|heic|heif)$/i.test(fileName);
+            if (!isImage) {
+                return true;
+            }
+            
+            if (!isValidationActive || validationNameSet.size === 0) {
+                return true;
+            }
+            const lastDotIndex = fileName.lastIndexOf('.');
+            const nameWithoutExt = lastDotIndex === -1 ? fileName : fileName.substring(0, lastDotIndex);
+            
+            // First, remove retina suffixes (@2x, @3x), then patterns like ".9", then all other digits.
+            const nameWithoutRetina = nameWithoutExt.replace(/@2x|@3x/g, '');
+            const nameWithoutSpecialPatterns = nameWithoutRetina.replace(/\.9/g, '');
+            const nameWithoutNumbers = nameWithoutSpecialPatterns.replace(/\d/g, '');
+            
+            const parts = nameWithoutNumbers.split('_');
+            
+            // Filter out any empty strings that result from the split (e.g., "item__box").
+            const meaningfulParts = parts.filter(part => part.length > 0);
+            
+            // If after removals, there are no parts left to validate, treat it as valid.
+            if (meaningfulParts.length === 0) {
+                return true;
+            }
+            
+            // Check if every meaningful part exists in the validation set.
+            return meaningfulParts.every(part => validationNameSet.has(part));
+        }
+        
+        function getInvalidFileNameParts(fileName) {
+            // This function assumes validation is active and the file is an image,
+            // as it's called after isFileNameValid returns false.
+            const lastDotIndex = fileName.lastIndexOf('.');
+            const nameWithoutExt = lastDotIndex === -1 ? fileName : fileName.substring(0, lastDotIndex);
+            
+            const nameWithoutRetina = nameWithoutExt.replace(/@2x|@3x/g, '');
+            const nameWithoutSpecialPatterns = nameWithoutRetina.replace(/\.9/g, '');
+            const nameWithoutNumbers = nameWithoutSpecialPatterns.replace(/\d/g, '');
+            
+            const parts = nameWithoutNumbers.split('_');
+            const meaningfulParts = parts.filter(part => part.length > 0);
+            
+            if (meaningfulParts.length === 0) {
+                return [];
+            }
+            
+            return meaningfulParts.filter(part => !validationNameSet.has(part));
+        }
+        
+        // --- Tagging Functions ---
+        function getTagsForFile(fileName) {
+            const tags = [];
+            const lowerFileName = fileName.toLowerCase();
+            for (const [tagName, tagInfo] of Object.entries(TAG_DEFINITIONS)) {
+                for (const keyword of tagInfo.keywords) {
+                    // console.log('🚀 . index.html . tagInfo.excludes.length:', tagInfo.excludes.length)
+                    // console.log('🚀 . index.html . tagInfo.excludes:', tagInfo.excludes)
+                    if (tagInfo.excludes.length > 0) {
+                        for (const exclude of tagInfo.excludes) {
+                            // console.log('🚀 . index.html . exclude:', exclude)
+                            if (lowerFileName.includes(keyword) && !lowerFileName.includes(exclude)) {
+                                tags.push({ name: tagName, color: tagInfo.color });
+                                break; // Found a keyword for this tag, move to the next tag definition
+                            }
+                        }
+                    } else {
+                        if (lowerFileName.includes(keyword) ) {
+                            if (tagInfo.keywords2 != null ) {
+                                if ( tagInfo.keywords2.some(keyword => fileName.includes(keyword))) {
+                                    tags.push({ name: tagName, color: tagInfo.color });
+                                }
+                            } else {
+                                tags.push({ name: tagName, color: tagInfo.color });
+                            }
+                            break; // Found a keyword for this tag, move to the next tag definition
+                        }
+                    }
+                }
+            }
+            return tags;
+        }
+        
+        function renderTagFilters() {
+            tagFilterContainer.innerHTML = '';
+            
+            const allButton = document.createElement('button');
+            allButton.textContent = 'All';
+            allButton.dataset.tagName = 'All';
+            allButton.className = 'tag-filter-chip';
+            tagFilterContainer.appendChild(allButton);
+            
+            for (const tagName in TAG_DEFINITIONS) {
+                const button = document.createElement('button');
+                button.textContent = tagName;
+                button.dataset.tagName = tagName;
+                button.className = 'tag-filter-chip';
+                tagFilterContainer.appendChild(button);
+            }
+            
+            updateTagFilterUI(); 
+            
+            tagFilterContainer.addEventListener('click', (e) => {
+                if (e.target.classList.contains('tag-filter-chip')) {
+                    const tagName = e.target.dataset.tagName;
+                    
+                    if (tagName === 'All') {
+                        selectedTags.clear();
+                    } else {
+                        if (selectedTags.has(tagName)) {
+                            selectedTags.delete(tagName);
+                        } else {
+                            selectedTags.add(tagName);
+                        }
+                    }
+                    updateTagFilterUI();
+                    renderCurrentView();
+                }
+            });
+        }
+        
+        function updateTagFilterUI() {
+            const chips = tagFilterContainer.querySelectorAll('.tag-filter-chip');
+            const isAllSelected = selectedTags.size === 0;
+            
+            chips.forEach(chip => {
+                const tagName = chip.dataset.tagName;
+                
+                chip.className = 'tag-filter-chip';
+                
+                if (tagName === 'All') {
+                    if (isAllSelected) {
+                        chip.classList.add('selected', 'bg-gray-800', 'text-white');
+                    } else {
+                        chip.classList.add('bg-white', 'text-gray-700', 'border', 'border-gray-300');
+                    }
+                } else {
+                    if (selectedTags.has(tagName)) {
+                        const tagInfo = TAG_DEFINITIONS[tagName];
+                        chip.classList.add('selected', ...tagInfo.color.split(' '));
+                        chip.classList.remove('border-gray-300');
+                    } else {
+                        chip.classList.add('bg-white', 'text-gray-700', 'border', 'border-gray-300');
+                    }
+                }
+            });
+        }
+        
+        // --- Utility and UI Functions ---
+        function highlightText(text, query) {
+            if (!query || !text) {
+                return text;
+            }
+            try {
+                const searchTerms = query.split(/\s+/).filter(term => term.length > 0);
+                if (searchTerms.length === 0) {
+                    return text;
+                }
+                const escapedTerms = searchTerms.map(term => term.replace(/[-\/\\^$*+?.()|[\]{}]/g, '\\$&'));
+                const flags = caseSensitiveCheckbox.checked ? 'g' : 'gi';
+                const regex = new RegExp(`(${escapedTerms.join('|')})`, flags);
+                return text.replace(regex, '<mark>$1</mark>');
+            } catch (e) {
+                console.error("Invalid regex for highlighting:", e);
+                return text;
+            }
+        }
+        
+        function getHighlightedName(name, query) {
+            const lastDotIndex = name.lastIndexOf('.');
+            const nameWithoutExt = lastDotIndex === -1 ? name : name.substring(0, lastDotIndex);
+            
+            const extension = lastDotIndex === -1 ? '' : name.substring(lastDotIndex);
+            if (extension == '.txt') {
+                return name; 
+            }
+            
+            const parts = nameWithoutExt.split('_');
+            
+            const htmlParts = parts.map(part => {
+                if (part.length === 0) return ''; // Handles consecutive underscores
+                
+                let isPartValid = true;
+                if (isValidationActive && validationNameSet.size > 0) {
+                    const partWithoutNumbers = part.replace(/@2x|@3x/g, '').replace(/\.9/g, '').replace(/\d/g, '');
+                    if (partWithoutNumbers.length > 0 && !validationNameSet.has(partWithoutNumbers)) {
+                        isPartValid = false;
+                    }
+                }
+                
+                const highlightedPart = highlightText(part, query);
+                
+                if (isPartValid) {
+                    return highlightedPart;
+                } else {
+                    return `<span class="text-red-500 font-bold">${highlightedPart}</span>`;
+                }
+            });
+            
+            const highlightedExtension = highlightText(extension, query);
+            
+            return htmlParts.join('_') + highlightedExtension;
+        }
+        
+        function updateDownloadButtonState() {
+            const filesToDownload = getFilesToDownload();
+            const count = filesToDownload.length;
+            
+            if (count > 0) {
+                downloadSelectedButton.disabled = false;
+                downloadSelectedButton.textContent = `${count}개 다운로드`;
+                downloadSelectedButton.classList.replace('bg-gray-400', 'bg-green-600');
+                downloadSelectedButton.classList.replace('cursor-not-allowed', 'cursor-pointer');
+            } else {
+                downloadSelectedButton.disabled = true;
+                downloadSelectedButton.textContent = '다운로드';
+                downloadSelectedButton.classList.replace('bg-green-600', 'bg-gray-400');
+                downloadSelectedButton.classList.replace('cursor-pointer', 'cursor-not-allowed');
+            }
+            
+            const filteredFiles = getFilteredEntries().filter(e => e['.tag'] === 'file');
+            if (filteredFiles.length > 0) {
+                exportFileNamesButton.disabled = false;
+                exportFileNamesButton.classList.replace('bg-gray-400', 'bg-blue-600');
+                exportFileNamesButton.classList.replace('cursor-not-allowed', 'cursor-pointer');
+            } else {
+                exportFileNamesButton.disabled = true;
+                exportFileNamesButton.classList.replace('bg-blue-600', 'bg-gray-400');
+                exportFileNamesButton.classList.replace('cursor-pointer', 'cursor-not-allowed');
+            }
+        }
+        
+        function displayImage(blob, fileName, filePath) {
+            const placeholder = document.querySelector(`.image-placeholder-item[data-path="${filePath}"]`);
+            const imgElement = document.createElement('img');
+            imgElement.src = URL.createObjectURL(blob);
+            imgElement.alt = fileName;
+            imgElement.title = fileName;
+            imgElement.dataset.path = filePath;
+            imgElement.className = "w-full h-auto object-cover rounded-md shadow-sm border-2 border-gray-400";
+            if (placeholder) {
+                placeholder.replaceWith(imgElement);
+            } else {
+                imageContainer.appendChild(imgElement);
+            }
+        }
+        
+        function resetUIForDownload() {
+            imageContainer.innerHTML = '';
+            const placeholder = document.createElement('span');
+            placeholder.id = 'imagePlaceholder';
+            placeholder.className = 'text-gray-400 col-span-full text-center self-center';
+            placeholder.textContent = '다운로드된 이미지가 여기에 표시됩니다';
+            imageContainer.appendChild(placeholder);
+            saveAllLocallyButton.classList.add('hidden');
+            progressContainerWrapper.classList.add('hidden');
+            progressBar.style.width = '0%';
+        }
+        
+        function updateStatus(message, isError = false) {
+            statusDiv.textContent = message;
+            statusDiv.className = `text-sm font-semibold ${isError ? 'text-red-600' : 'text-green-600'}`;
+        }
+        
+        function reRootHierarchyEntries(entries) {
+            const selectedFolders = Array.from(rootFolderDropdownPanel.querySelectorAll('input[type="checkbox"]:checked')).map(cb => cb.value);
+            
+            if (selectedFolders.length === 0) {
+                return [];
+            }
+            
+            const commonParent = TEAM_ROOT_FOLDER;
+            
+            return entries.map(entry => {
+                const newEntry = { ...entry };
+                newEntry.path_display = entry.path_display.substring(commonParent.length);
+                return newEntry;
+            });
+        }
+        
+        function setLoading(isLoading, message = "") {
+            loaderOverlay.classList.toggle('hidden', !isLoading);
+            if (isLoading) updateStatus(message, false);
+        }
+        
+        async function generateCodeChallenge(verifier) {
+            const digest = await window.crypto.subtle.digest('SHA-256', new TextEncoder().encode(verifier));
+            return btoa(String.fromCharCode.apply(null, new Uint8Array(digest)))
+            .replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+        }
+        
+        function generateRandomString(length) {
+            const possible = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789';
+            let text = '';
+            for (let i = 0; i < length; i++) text += possible.charAt(Math.floor(Math.random() * possible.length));
+            return text;
+        }
+        
+        function escapeDropboxApiArg(argString) {
+            return argString.replace(/[\u007F-\uFFFF]/g, c => '\\u' + ('0000' + c.charCodeAt(0).toString(16)).slice(-4));
+        }
+        
+        function filterEntriesByLocale(entries, selectedPrimaryLocales) {
+            if (selectedPrimaryLocales.length === 0) return [];
+            
+            const allPossibleAliases = new Set(Object.values(LOCALE_MAP).flat());
+            const isCommonSelected = selectedPrimaryLocales.includes('COMMON');
+            
+            const selectedAliases = new Set();
+            selectedPrimaryLocales.forEach(primaryLocale => {
+                if (LOCALE_MAP[primaryLocale]) {
+                    LOCALE_MAP[primaryLocale].forEach(alias => selectedAliases.add(alias));
+                }
+            });
+            
+            return entries.filter(entry => {
+                const pathParts = entry.path_display.toLowerCase().split('/');
+                
+                let entryHasKnownLocale = false;
+                for (const part of pathParts) {
+                    if (allPossibleAliases.has(part)) {
+                        entryHasKnownLocale = true;
+                        if (selectedAliases.has(part)) {
+                            return true; // Path contains a selected locale alias
+                        }
+                    }
+                }
+                
+                // If the path has a known locale but it wasn't selected, filter it out.
+                if (entryHasKnownLocale) {
+                    return false;
+                }
+                
+                // If the path has no known locale, it's considered "COMMON".
+                // Include it only if "COMMON" is selected.
+                if (isCommonSelected) {
+                    return true;
+                }
+                
+                return false;
+            });
+        }
+        
+        function getLocaleFromPath(path) {
+            const pathLower = path.toLowerCase();
+            for (const [primaryLocale, aliases] of Object.entries(LOCALE_MAP)) {
+                for (const alias of aliases) {
+                    if (pathLower.includes(`/${alias.toLowerCase()}/`)) {
+                        return primaryLocale;
+                    }
+                }
+            }
+            return null;
+        }
+        
+        function getFormattedDateTime() {
+            const now = new Date();
+            const year = now.getFullYear();
+            const month = String(now.getMonth() + 1).padStart(2, '0');
+            const day = String(now.getDate()).padStart(2, '0');
+            const hours = String(now.getHours()).padStart(2, '0');
+            const minutes = String(now.getMinutes()).padStart(2, '0');
+            const seconds = String(now.getSeconds()).padStart(2, '0');
+            return `${year}${month}${day}_${hours}${minutes}${seconds}`;
+        }
+        
+        function exportFileNames() {
+            const filteredEntries = getFilteredEntries();
+            const files = filteredEntries.filter(entry => entry['.tag'] === 'file');
+            
+            if (files.length === 0) {
+                updateStatus("내보낼 파일이 없습니다.", true);
+                setTimeout(() => updateStatus(''), 2000);
+                return;
+            }
+            
+            const fileNames = files.map(file => file.name).join('\n');
+            const blob = new Blob([fileNames], { type: 'text/plain;charset=utf-8' });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            
+            const selectedFolders = Array.from(rootFolderDropdownPanel.querySelectorAll('input:checked')).map(cb => cb.value.split('/').pop());
+            const folderPrefix = selectedFolders.join('_');
+            const dateTime = getFormattedDateTime();
+            a.download = `${folderPrefix}_filenames_${dateTime}.txt`;
+            
+            document.body.appendChild(a);
+            a.click();
+            document.body.removeChild(a);
+            URL.revokeObjectURL(url);
+            updateStatus(`${files.length}개의 파일 이름을 내보냈습니다.`, false);
+        }
+        
+        async function downloadAllLocally() {
+            const images = imageContainer.querySelectorAll('img');
+            if (images.length === 0) {
+                updateStatus("로컬에 저장할 이미지가 없습니다.", true);
+                return;
+            }
+            
+            updateStatus(`ZIP 파일 생성 중... (${images.length}개 파일)`, false);
+            const zip = new JSZip();
+            
+            for (const img of images) {
+                const response = await fetch(img.src);
+                const blob = await response.blob();
+                const originalPath = img.dataset.path;
+                const originalFilename = img.alt;
+                
+                const locale = getLocaleFromPath(originalPath);
+                
+                let zipPath;
+                if (locale && locale !== 'KOR') {
+                    zipPath = `${locale}/${originalFilename}`;
+                } else {
+                    zipPath = originalFilename;
+                }
+                
+                zip.file(zipPath, blob);
+            }
+            
+            updateStatus("ZIP 파일 압축 중...", false);
+            zip.generateAsync({ type: "blob" })
+            .then(function(content) {
+                const selectedFolders = Array.from(rootFolderDropdownPanel.querySelectorAll('input:checked')).map(cb => cb.value.split('/').pop());
+                const folderPrefix = selectedFolders.join('_');
+                const dateTime = getFormattedDateTime();
+                const zipFilename = `${folderPrefix}_${dateTime}.zip`;
+                
+                const a = document.createElement('a');
+                a.href = URL.createObjectURL(content);
+                a.download = zipFilename;
+                document.body.appendChild(a);
+                a.click();
+                document.body.removeChild(a);
+                URL.revokeObjectURL(a.href);
+                updateStatus("ZIP 파일 다운로드 완료.", false);
+            });
+        }
+        
+        function updateSelectAllCheckboxState() {
+            const allChecked = Array.from(localeCheckboxes).every(cb => cb.checked);
+            const someChecked = Array.from(localeCheckboxes).some(cb => cb.checked) && !allChecked;
+            localeAllCheckbox.checked = allChecked;
+            localeAllCheckbox.indeterminate = someChecked;
+        }
+        
+        function applyEllipsisLogic() {
+            const FOLDER_FILE_LIMIT = 20;
+            const allFolderItems = hierarchyContainer.querySelectorAll('li[data-folder-toggle]');
+            
+            allFolderItems.forEach(folderLi => {
+                const directChildUl = folderLi.querySelector(':scope > ul');
+                if (!directChildUl) return;
+                
+                const fileItems = Array.from(directChildUl.children).filter(li => li.hasAttribute('data-path'));
+                
+                if (fileItems.length > FOLDER_FILE_LIMIT) {
+                    for (let i = FOLDER_FILE_LIMIT; i < fileItems.length; i++) {
+                        fileItems[i].classList.add('hidden-by-ellipsis');
+                    }
+                    
+                    const showMoreBtn = document.createElement('li');
+                    showMoreBtn.className = 'show-more-btn';
+                    showMoreBtn.textContent = '... 더보기';
+                    
+                    directChildUl.insertBefore(showMoreBtn, fileItems[FOLDER_FILE_LIMIT]);
+                    
+                    showMoreBtn.addEventListener('click', (e) => {
+                        e.stopPropagation();
+                        const hiddenItems = Array.from(directChildUl.querySelectorAll('.hidden-by-ellipsis'));
+                        hiddenItems.forEach(item => item.classList.remove('hidden-by-ellipsis'));
+                        showMoreBtn.remove();
+                    });
+                }
+            });
+        }
+        function expandAllFolders() {
+            hierarchyContainer.querySelectorAll('li[data-folder-toggle]').forEach(li => {
+                li.classList.remove('collapsed');
+                treeState.set(li.dataset.path, false);
+            });
+        }
+        function collapseAllFolders() {
+            hierarchyContainer.querySelectorAll('li[data-folder-toggle]').forEach(li => {
+                li.classList.add('collapsed');
+                treeState.set(li.dataset.path, true);
+            });
+        }
+    });
+</script>
+</body>
+</html>
+
