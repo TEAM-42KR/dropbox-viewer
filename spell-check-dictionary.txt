@@ -63,6 +63,7 @@ successful
 bid
 history
 my
+mycell
 premium
 change
 mark
@@ -1485,10 +1486,11 @@ banner
 pet
 tape
 moorim
-cultattack
-shopaholic
 skillbg
-calm
 polygon
-bestscore
-ability
+vigilantekillday
+ar
+surprised
+angry
+grin
+nonecrop

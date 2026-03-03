@@ -387,6 +387,9 @@
                         <p class="text-xs text-gray-500 mb-2">'spell-check-dictionary.txt' 파일을 자동으로 불러옵니다.</p>
                         <div id="validationStatus" class="text-xs text-green-700 mt-1"></div>
                         <button id="clearValidationButton" class="hidden text-xs text-red-500 hover:underline mt-1">검증 초기화</button>
+                        <button id="resetValidationStateButton" class="text-xs text-gray-500 hover:underline mt-1">상태 초기화</button>
+                        <button id="openValidationWordsModalButton" class="text-xs text-blue-600 hover:underline mt-1">검증 단어 보기</button>
+                        <button id="openNamingToolModalButton" class="mt-2 w-full bg-indigo-600 text-white py-2 rounded-lg font-semibold hover:bg-indigo-700 transition duration-300 text-xs">구글시트 도구 열기</button>
                     </div>
                 </div>
                 
@@ -523,13 +526,38 @@
         
     </div>
     
-    <div id="namingTestModal" class="hidden fixed inset-0 bg-black bg-opacity-50 z-50 flex items-center justify-center">
-        <div class="bg-white rounded-lg shadow-xl p-6 w-full max-w-md">
-            <div class="flex justify-between items-center mb-4">
-                <h2 class="text-xl font-bold">네이밍 테스트</h2>
-                <button id="closeModalButton" class="text-gray-500 hover:text-gray-800">&times;</button>
+    <div id="namingTestModal" class="hidden fixed inset-0 bg-black bg-opacity-50 z-50 flex items-center justify-center p-4">
+        <div class="bg-white rounded-lg shadow-xl p-6 w-full max-w-3xl max-h-[90vh] overflow-y-auto">
+            <div class="flex justify-between items-center mb-4 gap-4">
+                <h2 class="text-xl font-bold">구글시트 네이밍 도구</h2>
+                <button id="closeModalButton" class="text-gray-500 hover:text-gray-800 text-3xl leading-none">&times;</button>
             </div>
-            <p>네이밍 테스트 모달 팝업입니다.</p>
+            <div class="mt-4 flex flex-wrap gap-2">
+                <button id="namingValidateButton" class="bg-indigo-600 text-white py-2 px-3 rounded-lg text-sm font-semibold hover:bg-indigo-700 transition">검증</button>
+            </div>
+            
+            <div id="namingToolStatus" class="mt-3 text-sm text-gray-600"></div>
+            <p id="namingToolError" class="mt-1 text-sm text-red-600 hidden"></p>
+            <pre id="namingToolResult" class="mt-3 bg-gray-900 text-gray-100 rounded-lg p-3 text-xs overflow-auto max-h-96"></pre>
+        </div>
+    </div>
+    
+    <div id="validationWordsModal" class="hidden fixed inset-0 bg-black bg-opacity-50 z-50 flex items-center justify-center p-4">
+        <div class="bg-white rounded-lg shadow-xl p-6 w-full max-w-3xl max-h-[90vh] flex flex-col">
+            <div class="flex justify-between items-center mb-3 gap-4">
+                <h2 class="text-xl font-bold">검증 단어 목록</h2>
+                <button id="closeValidationWordsModalButton" class="text-gray-500 hover:text-gray-800 text-3xl leading-none">&times;</button>
+            </div>
+            <div class="text-sm text-gray-600 mb-3">
+                <span id="validationWordsCount">총 0개</span>
+            </div>
+            <input
+                id="validationWordsSearchInput"
+                type="search"
+                placeholder="단어 검색..."
+                class="w-full border border-gray-300 p-2 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+            >
+            <div id="validationWordsList" class="mt-3 flex-grow overflow-y-auto border border-gray-200 rounded-lg p-3 bg-gray-50 text-sm"></div>
         </div>
     </div>
 
@@ -549,6 +577,22 @@
             const APP_SECRET = "r0n8qvo7mxuae85"
             const REDIRECT_URI = window.location.origin + window.location.pathname;
             const TEAM_ROOT_FOLDER = '/TEAM42의 팀 폴더/Mafia42/마피아 이미지';
+            const GOOGLE_SHEET_CONFIG = {
+                spreadsheetId: '10C8ozvhert1MHK6MQfsToNdYRJBDeOWPaQ5AKcHuH9Q',
+                defaultSheetName: 'SKILL',
+                lineLimit: 0
+            };
+            const DEFAULT_SHEET_OPTIONS = [
+                'SKILL',
+                'GENERAL',
+                'EVENT',
+                'ITEM',
+                'INGAME',
+                'COLLECTION',
+                'JOB',
+                'TEST1',
+                'TEST2'
+            ];
             
             const LOCALE_MAP = {
                 'TW': ['twn', 'tw', '대만'],
@@ -656,6 +700,17 @@
             // --- Modal Elements ---
             const namingTestModal = document.getElementById('namingTestModal');
             const closeModalButton = document.getElementById('closeModalButton');
+            const openNamingToolModalButton = document.getElementById('openNamingToolModalButton');
+            const openValidationWordsModalButton = document.getElementById('openValidationWordsModalButton');
+            const namingValidateButton = document.getElementById('namingValidateButton');
+            const namingToolStatus = document.getElementById('namingToolStatus');
+            const namingToolError = document.getElementById('namingToolError');
+            const namingToolResult = document.getElementById('namingToolResult');
+            const validationWordsModal = document.getElementById('validationWordsModal');
+            const closeValidationWordsModalButton = document.getElementById('closeValidationWordsModalButton');
+            const validationWordsCount = document.getElementById('validationWordsCount');
+            const validationWordsSearchInput = document.getElementById('validationWordsSearchInput');
+            const validationWordsList = document.getElementById('validationWordsList');
             
             // --- Sorting Elements ---
             const sortByNameButton = document.getElementById('sort-by-name');
@@ -666,6 +721,7 @@
             // --- Naming Validation Elements ---
             const validationStatus = document.getElementById('validationStatus');
             const clearValidationButton = document.getElementById('clearValidationButton');
+            const resetValidationStateButton = document.getElementById('resetValidationStateButton');
             
             // --- State Variables ---
             let accessToken = null;
@@ -682,11 +738,15 @@
             let lastColumnItemClicked = null;
             let favoritedFolders = new Map();
             let validationNameSet = new Set();
+            let validationFileNameSet = new Set();
             let isValidationActive = false;
             let filterByValidationError = false;
             let rootNamespaceId = null;
             let treeState = new Map(); // Stores collapsed state for tree view folders
             let isAuthFailureOverlayVisible = false;
+            let namingToolLoadedKeys = [];
+            let namingToolSheetOptions = [...DEFAULT_SHEET_OPTIONS];
+            let namingToolIsLoading = false;
             
             // --- Event Listeners ---
             authButton.addEventListener('click', startAuthentication);
@@ -721,6 +781,7 @@
             columnViewWrapper.addEventListener('keydown', handleColumnViewKeyDown);
             selectAllCheckbox.addEventListener('click', handleSelectAllClick);
             clearValidationButton.addEventListener('click', clearValidation);
+            resetValidationStateButton.addEventListener('click', resetValidationState);
             
             // Root Folder Dropdown Listener
             rootFolderDropdownButton.addEventListener('click', () => {
@@ -760,7 +821,7 @@
                 hideContextMenu();
             });
             contextMenuNamingTest.addEventListener('click', () => {
-                namingTestModal.classList.remove('hidden');
+                openNamingToolModal();
                 hideContextMenu();
             });
             contextMenuShowInTree.addEventListener('click', () => {
@@ -782,12 +843,22 @@
                 }
                 hideContextMenu();
             });
-            closeModalButton.addEventListener('click', () => namingTestModal.classList.add('hidden'));
+            openNamingToolModalButton.addEventListener('click', openNamingToolModal);
+            closeModalButton.addEventListener('click', closeNamingToolModal);
             namingTestModal.addEventListener('click', (e) => {
                 if (e.target === namingTestModal) {
-                    namingTestModal.classList.add('hidden');
+                    closeNamingToolModal();
                 }
             });
+            openValidationWordsModalButton.addEventListener('click', openValidationWordsModal);
+            closeValidationWordsModalButton.addEventListener('click', closeValidationWordsModal);
+            validationWordsModal.addEventListener('click', (e) => {
+                if (e.target === validationWordsModal) {
+                    closeValidationWordsModal();
+                }
+            });
+            validationWordsSearchInput.addEventListener('input', renderValidationWordsList);
+            namingValidateButton.addEventListener('click', onNamingValidate);
             
             
             extensionSelector.addEventListener('change', () => {
@@ -815,6 +886,7 @@
                 if (!ensureDropboxAuthConfig()) {
                     return;
                 }
+                initializeNamingToolModal();
                 loadFavorites();
                 loadValidationDictionary();
                 renderTagFilters();
@@ -838,6 +910,7 @@
                     viewHierarchyButton.disabled = false;
                     viewHierarchyButton.classList.replace('bg-gray-800', 'bg-purple-600');
                     fetchRootFolders();
+                    onNamingValidate();
                 }
                 
                 updateSelectAllCheckboxState();
@@ -933,6 +1006,7 @@
                     controlsContainer.classList.remove('hidden');
                     
                     await fetchRootFolders();
+                    await onNamingValidate();
                     
                 } catch (error) {
                     updateStatus(`토큰 발급 또는 파일 목록 로딩 실패: ${error.message}`, true);
@@ -2433,17 +2507,391 @@
         }
         
         // --- Naming Validation Logic ---
+        function initializeNamingToolModal() {
+            setNamingToolStatus('검증 버튼을 누르면 전체 탭 기준으로 규칙을 갱신합니다.', false);
+            namingToolResult.textContent = '';
+        }
+        
+        function openNamingToolModal() {
+            namingTestModal.classList.remove('hidden');
+        }
+        
+        function closeNamingToolModal() {
+            namingTestModal.classList.add('hidden');
+        }
+        
+        async function openValidationWordsModal() {
+            validationWordsSearchInput.value = '';
+            await ensureValidationFileWordsLoaded();
+            renderValidationWordsList();
+            validationWordsModal.classList.remove('hidden');
+            validationWordsSearchInput.focus();
+        }
+        
+        function closeValidationWordsModal() {
+            validationWordsModal.classList.add('hidden');
+        }
+        
+        async function ensureValidationFileWordsLoaded() {
+            try {
+                const fileWords = await loadValidationDictionaryFromFile();
+                validationFileNameSet = new Set(fileWords);
+            } catch (error) {
+                validationFileNameSet = new Set();
+                console.warn('[Validation] 모달용 spell-check-dictionary.txt 로드 실패:', error);
+            }
+        }
+        
+        function renderValidationWordsList() {
+            const query = validationWordsSearchInput.value.trim().toLowerCase();
+            const mergedWords = new Set([...validationNameSet, ...validationFileNameSet]);
+            const allWords = Array.from(mergedWords).sort((a, b) => a.localeCompare(b));
+            const filteredWords = query.length > 0
+                ? allWords.filter((word) => word.toLowerCase().includes(query))
+                : allWords;
+            
+            validationWordsCount.textContent = `총 ${filteredWords.length}개`;
+            validationWordsList.innerHTML = '';
+            
+            if (filteredWords.length === 0) {
+                const emptyMessage = document.createElement('p');
+                emptyMessage.className = 'text-gray-500';
+                emptyMessage.textContent = mergedWords.size === 0
+                    ? '현재 로드된 검증 단어가 없습니다.'
+                    : '검색 결과가 없습니다.';
+                validationWordsList.appendChild(emptyMessage);
+                return;
+            }
+            
+            const fragment = document.createDocumentFragment();
+            filteredWords.forEach((word) => {
+                const chip = document.createElement('span');
+                chip.className = 'inline-flex items-center m-1 px-2 py-1 rounded-md bg-white border border-gray-300 text-gray-700 text-xs';
+                chip.textContent = word;
+                fragment.appendChild(chip);
+            });
+            validationWordsList.appendChild(fragment);
+        }
+        
+        function setNamingToolLoading(isLoading) {
+            namingToolIsLoading = isLoading;
+            namingValidateButton.disabled = isLoading;
+            namingValidateButton.classList.toggle('opacity-60', isLoading);
+        }
+        
+        function setNamingToolStatus(message, isError) {
+            namingToolStatus.textContent = message;
+            namingToolStatus.className = `mt-3 text-sm ${isError ? 'text-red-600' : 'text-gray-600'}`;
+        }
+        
+        function setNamingToolError(message) {
+            if (!message) {
+                namingToolError.classList.add('hidden');
+                namingToolError.textContent = '';
+                return;
+            }
+            namingToolError.textContent = message;
+            namingToolError.classList.remove('hidden');
+        }
+        
+        function setNamingToolResult(data) {
+            namingToolResult.textContent = JSON.stringify(data, null, 2);
+        }
+        
+        async function fetchWorksheetTabs(spreadsheetId) {
+            const worksheetFeedUrl = `https://spreadsheets.google.com/feeds/worksheets/${encodeURIComponent(
+                spreadsheetId
+            )}/public/basic?alt=json`;
+            const response = await fetch(worksheetFeedUrl);
+            if (!response.ok) {
+                throw new Error(`탭 목록 조회 실패 (${response.status})`);
+            }
+            const data = await response.json();
+            const fetchedSheetOptions = (data.feed?.entry || [])
+            .map((entry) => entry.title?.$t?.trim() || '')
+            .filter((name) => name.length > 0);
+            if (fetchedSheetOptions.length === 0) {
+                throw new Error('탭 목록이 비어 있습니다.');
+            }
+            return fetchedSheetOptions;
+        }
+        
+        async function fetchKeysFromSheet(spreadsheetId, sheetName) {
+            const requestUrl = `https://docs.google.com/spreadsheets/d/${encodeURIComponent(
+                spreadsheetId
+            )}/gviz/tq?tqx=out:csv&sheet=${encodeURIComponent(sheetName)}`;
+            const response = await fetch(requestUrl);
+            const csvText = await response.text();
+            
+            if (!response.ok) {
+                throw new Error(`[${sheetName}] 조회 실패 (${response.status})`);
+            }
+            
+            const parsedRows = parseCsvRows(csvText);
+            const allKeys = extractSheetTerms(parsedRows);
+            
+            return allKeys;
+        }
+        
+        function hasNumber(token) {
+            return /\d/.test(token);
+        }
+
+        function normalizeValidationWord(word) {
+            return (word ?? '').trim().toLowerCase();
+        }
+
+        function normalizeValidationWords(words) {
+            return words
+            .map((word) => normalizeValidationWord(word))
+            .filter((word) => word.length > 0);
+        }
+        
+        function parseUniqueTokensFromKeys(keys) {
+            const count = keys.reduce((acc, key) => {
+                key.split('_')
+                .map((token) => token.trim())
+                .filter((token) => token.length > 0)
+                .forEach((token) => {
+                    if (hasNumber(token)) {
+                        const tokenWithoutNumbers = token.replace(/\d/g, '');
+                        if (tokenWithoutNumbers.length > 0) {
+                            acc[tokenWithoutNumbers] = (acc[tokenWithoutNumbers] ?? 0) + 1;
+                        }
+                        return;
+                    }
+                    acc[token] = (acc[token] ?? 0) + 1;
+                });
+                return acc;
+            }, {});
+            return Object.keys(count).sort((a, b) => a.localeCompare(b));
+        }
+
+        function buildValidationWordsFromSheetValues(values) {
+            const tokens = parseUniqueTokensFromKeys(values);
+            const normalizedValues = normalizeValidationWords(values);
+            const normalizedTokens = normalizeValidationWords(tokens);
+            return Array.from(new Set([...normalizedValues, ...normalizedTokens]));
+        }
+        
+        async function onNamingValidate() {
+            if (namingToolIsLoading) return;
+            setNamingToolError('');
+            try {
+                setNamingToolLoading(true);
+                if (!GOOGLE_SHEET_CONFIG.spreadsheetId) {
+                    throw new Error('SPREADSHEET_ID 설정값이 비어 있습니다.');
+                }
+                
+                let tabsFromFallback = false;
+                try {
+                    const fetchedTabs = await fetchWorksheetTabs(GOOGLE_SHEET_CONFIG.spreadsheetId);
+                    namingToolSheetOptions = fetchedTabs;
+                } catch (error) {
+                    tabsFromFallback = true;
+                    namingToolSheetOptions = [...DEFAULT_SHEET_OPTIONS];
+                    console.warn('[NamingTool] 탭 목록 조회 실패, 기본 탭 목록으로 진행:', error);
+                }
+                
+                const allKeys = [];
+                const loadedTabs = [];
+                const failedTabs = [];
+                for (const tabName of namingToolSheetOptions) {
+                    try {
+                        const keys = await fetchKeysFromSheet(
+                            GOOGLE_SHEET_CONFIG.spreadsheetId,
+                            tabName
+                        );
+                        allKeys.push(...keys);
+                        loadedTabs.push(tabName);
+                    } catch (error) {
+                        failedTabs.push(tabName);
+                        console.warn(`[NamingTool] [${tabName}] 탭 로드 실패:`, error);
+                    }
+                }
+                
+                if (allKeys.length === 0) {
+                    throw new Error('모든 탭에서 키를 가져오지 못했습니다.');
+                }
+                namingToolLoadedKeys = allKeys;
+                
+                const uniqueTokens = parseUniqueTokensFromKeys(allKeys);
+                const sheetWords = buildValidationWordsFromSheetValues(allKeys);
+                let fileTokens = [];
+                let fileLoadFailed = false;
+                try {
+                    fileTokens = await loadValidationDictionaryFromFile();
+                } catch (error) {
+                    fileLoadFailed = true;
+                    console.warn('[Validation] spell-check-dictionary.txt 로드 실패:', error);
+                }
+                
+                validationNameSet = new Set([...sheetWords, ...normalizeValidationWords(fileTokens)]);
+                isValidationActive = true;
+                const sourceLabel = fileTokens.length > 0
+                    ? `Google Sheet:${loadedTabs.length}개 탭 + spell-check-dictionary.txt`
+                    : `Google Sheet:${loadedTabs.length}개 탭`;
+                validationStatus.textContent = `규칙 로드됨 (${sourceLabel}): ${validationNameSet.size}개 항목`;
+                validationStatus.classList.remove('text-red-700');
+                validationStatus.classList.add('text-green-700');
+                clearValidationButton.classList.remove('hidden');
+                renderCurrentView();
+                
+                setNamingToolResult({
+                    parsedTabs: loadedTabs,
+                    failedTabs,
+                    tabsFromFallback,
+                    totalKeyCount: allKeys.length,
+                    uniqueTokens,
+                    uniqueTokenLength: uniqueTokens.length,
+                    validationWordCount: validationNameSet.size
+                });
+                setNamingToolStatus(
+                    `검증 완료 (성공 탭 ${loadedTabs.length}개${failedTabs.length > 0 ? `, 실패 탭 ${failedTabs.length}개` : ''}, 키 ${allKeys.length}개, 토큰 ${uniqueTokens.length}개, 규칙 ${validationNameSet.size}개).${tabsFromFallback ? ' 탭 목록은 기본값으로 대체했습니다.' : ''}${fileLoadFailed ? ' 파일 사전 로드는 실패했습니다.' : ''}`,
+                    false
+                );
+            } catch (error) {
+                setNamingToolError(error.message || '검증 중 오류가 발생했습니다.');
+                setNamingToolStatus('검증에 실패했습니다.', true);
+            } finally {
+                setNamingToolLoading(false);
+            }
+        }
+        
+        function parseCsvRows(csvText) {
+            const rows = [];
+            let currentRow = [];
+            let currentCell = '';
+            let inQuotes = false;
+            
+            for (let i = 0; i < csvText.length; i += 1) {
+                const char = csvText[i];
+                const nextChar = csvText[i + 1];
+                
+                if (char === '"') {
+                    if (inQuotes && nextChar === '"') {
+                        currentCell += '"';
+                        i += 1;
+                        continue;
+                    }
+                    inQuotes = !inQuotes;
+                    continue;
+                }
+                
+                if (!inQuotes && char === ',') {
+                    currentRow.push(currentCell);
+                    currentCell = '';
+                    continue;
+                }
+                
+                if (!inQuotes && (char === '\n' || char === '\r')) {
+                    if (char === '\r' && nextChar === '\n') {
+                        i += 1;
+                    }
+                    currentRow.push(currentCell);
+                    rows.push(currentRow);
+                    currentRow = [];
+                    currentCell = '';
+                    continue;
+                }
+                
+                currentCell += char;
+            }
+            
+            if (currentCell.length > 0 || currentRow.length > 0) {
+                currentRow.push(currentCell);
+                rows.push(currentRow);
+            }
+            
+            return rows.filter(row => row.some(cell => cell.length > 0));
+        }
+
+        function extractSheetTerms(parsedRows) {
+            if (parsedRows.length === 0) {
+                return [];
+            }
+
+            const headerRow = parsedRows[0].map((cell) => cell.trim().toLowerCase());
+            const keysColumnIndex = headerRow.findIndex((columnName) => columnName === 'keys');
+            const englishColumnIndex = headerRow.findIndex((columnName) => columnName === 'english');
+
+            return parsedRows.slice(1).flatMap((row) => {
+                const terms = [];
+                const keyValue = (keysColumnIndex >= 0 ? row[keysColumnIndex] : row[0])?.trim() ?? '';
+                const englishValue = (englishColumnIndex >= 0 ? row[englishColumnIndex] : '')?.trim() ?? '';
+
+                if (keyValue.length > 0) {
+                    terms.push(keyValue);
+                }
+                if (englishValue.length > 0) {
+                    englishValue
+                    .split(/\s+/)
+                    .map((word) => word.trim())
+                    .filter((word) => word.length > 0)
+                    .forEach((word) => {
+                        if (word !== keyValue) {
+                            terms.push(word);
+                        }
+                    });
+                }
+
+                return terms;
+            });
+        }
+        
+        async function loadValidationDictionaryFromGoogleSheet() {
+            const keys = await fetchKeysFromSheet(
+                GOOGLE_SHEET_CONFIG.spreadsheetId,
+                GOOGLE_SHEET_CONFIG.defaultSheetName
+            );
+            return buildValidationWordsFromSheetValues(keys);
+        }
+        
+        async function loadValidationDictionaryFromFile() {
+            const response = await fetch('spell-check-dictionary.txt');
+            if (!response.ok) {
+                throw new Error(`파일을 불러올 수 없습니다: ${response.statusText}`);
+            }
+            const content = await response.text();
+            return content
+            .split(/\r?\n/)
+            .map(line => line.trim())
+            .filter(line => line.length > 0);
+        }
+        
         async function loadValidationDictionary() {
             try {
-                const response = await fetch('spell-check-dictionary.txt');
-                if (!response.ok) {
-                    throw new Error(`파일을 불러올 수 없습니다: ${response.statusText}`);
+                const [sheetResult, fileResult] = await Promise.allSettled([
+                    loadValidationDictionaryFromGoogleSheet(),
+                    loadValidationDictionaryFromFile()
+                ]);
+                const sheetNames = sheetResult.status === 'fulfilled' ? sheetResult.value : [];
+                const fileNames = fileResult.status === 'fulfilled' ? fileResult.value : [];
+                
+                if (sheetResult.status === 'rejected') {
+                    console.warn('[Validation] Google Sheet 로드 실패:', sheetResult.reason);
                 }
-                const content = await response.text();
-                const names = content.split(/\r?\n/).map(line => line.trim()).filter(line => line.length > 0);
-                validationNameSet = new Set(names);
+                if (fileResult.status === 'rejected') {
+                    console.warn('[Validation] spell-check-dictionary.txt 로드 실패:', fileResult.reason);
+                }
+                
+                const mergedNames = [...sheetNames, ...fileNames];
+                if (mergedNames.length === 0) {
+                    throw new Error('Google Sheet와 spell-check-dictionary.txt 로드에 모두 실패했습니다.');
+                }
+                
+                let sourceLabel = '';
+                if (sheetNames.length > 0 && fileNames.length > 0) {
+                    sourceLabel = `Google Sheet(${GOOGLE_SHEET_CONFIG.defaultSheetName}) + spell-check-dictionary.txt`;
+                } else if (sheetNames.length > 0) {
+                    sourceLabel = `Google Sheet(${GOOGLE_SHEET_CONFIG.defaultSheetName})`;
+                } else {
+                    sourceLabel = 'spell-check-dictionary.txt';
+                }
+                
+                validationNameSet = new Set(normalizeValidationWords(mergedNames));
                 isValidationActive = true;
-                validationStatus.textContent = `규칙 파일 로드됨: ${validationNameSet.size}개 항목`;
+                validationStatus.textContent = `규칙 로드됨 (${sourceLabel}): ${validationNameSet.size}개 항목`;
                 validationStatus.classList.remove('text-red-700');
                 validationStatus.classList.add('text-green-700');
                 clearValidationButton.classList.remove('hidden');
@@ -2464,6 +2912,19 @@
             renderCurrentView();
         }
         
+        function resetValidationState() {
+            isValidationActive = false;
+            validationNameSet.clear();
+            namingToolLoadedKeys = [];
+            validationStatus.textContent = '';
+            validationStatus.classList.remove('text-green-700', 'text-red-700');
+            clearValidationButton.classList.add('hidden');
+            setNamingToolError('');
+            setNamingToolStatus('구글시트 정보를 설정한 뒤 시트를 로드하세요.', false);
+            namingToolResult.textContent = '';
+            renderCurrentView();
+        }
+        
         function isFileNameValid(fileName) {
             // Only validate image files. Non-image files are considered valid.
             const isImage = /\.(jpg|jpeg|png|webp|gif|heic|heif)$/i.test(fileName);
@@ -2477,8 +2938,8 @@
             const lastDotIndex = fileName.lastIndexOf('.');
             const nameWithoutExt = lastDotIndex === -1 ? fileName : fileName.substring(0, lastDotIndex);
             
-            // First, remove retina suffixes (@2x, @3x), then patterns like ".9", then all other digits.
-            const nameWithoutRetina = nameWithoutExt.replace(/@2x|@3x/g, '');
+            // First, remove retina suffixes (@1x/@2x/@3x and @x1/@x2/@x3), then patterns like ".9", then all other digits.
+            const nameWithoutRetina = nameWithoutExt.replace(/\s*@(?:1x|2x|3x|x1|x2|x3)/gi, '');
             const nameWithoutSpecialPatterns = nameWithoutRetina.replace(/\.9/g, '');
             const nameWithoutNumbers = nameWithoutSpecialPatterns.replace(/\d/g, '');
             
@@ -2493,7 +2954,7 @@
             }
             
             // Check if every meaningful part exists in the validation set.
-            return meaningfulParts.every(part => validationNameSet.has(part));
+            return meaningfulParts.every(part => validationNameSet.has(normalizeValidationWord(part)));
         }
         
         function getInvalidFileNameParts(fileName) {
@@ -2502,7 +2963,7 @@
             const lastDotIndex = fileName.lastIndexOf('.');
             const nameWithoutExt = lastDotIndex === -1 ? fileName : fileName.substring(0, lastDotIndex);
             
-            const nameWithoutRetina = nameWithoutExt.replace(/@2x|@3x/g, '');
+            const nameWithoutRetina = nameWithoutExt.replace(/\s*@(?:1x|2x|3x|x1|x2|x3)/gi, '');
             const nameWithoutSpecialPatterns = nameWithoutRetina.replace(/\.9/g, '');
             const nameWithoutNumbers = nameWithoutSpecialPatterns.replace(/\d/g, '');
             
@@ -2513,7 +2974,7 @@
                 return [];
             }
             
-            return meaningfulParts.filter(part => !validationNameSet.has(part));
+            return meaningfulParts.filter(part => !validationNameSet.has(normalizeValidationWord(part)));
         }
         
         // --- Tagging Functions ---
@@ -2650,8 +3111,11 @@
                 
                 let isPartValid = true;
                 if (isValidationActive && validationNameSet.size > 0) {
-                    const partWithoutNumbers = part.replace(/@2x|@3x/g, '').replace(/\.9/g, '').replace(/\d/g, '');
-                    if (partWithoutNumbers.length > 0 && !validationNameSet.has(partWithoutNumbers)) {
+                    const partWithoutNumbers = part
+                        .replace(/\s*@(?:1x|2x|3x|x1|x2|x3)/gi, '')
+                        .replace(/\.9/gi, '')
+                        .replace(/\d/g, '');
+                    if (partWithoutNumbers.length > 0 && !validationNameSet.has(normalizeValidationWord(partWithoutNumbers))) {
                         isPartValid = false;
                     }
                 }
