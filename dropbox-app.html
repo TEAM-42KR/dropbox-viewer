@@ -562,7 +562,7 @@
             <div id="authStepsContainer" class="space-y-6">
                 <div>
                     <h2 class="text-lg font-semibold text-gray-700 mb-2">1. 인증</h2>
-                    <button id="authButton" class="w-full bg-blue-600 text-white py-3 rounded-lg font-semibold hover:bg-blue-700 transition duration-300">인증 시작</button>
+                    <p class="text-sm text-gray-600 leading-6">아래 토큰 발급 단계에서 인증 코드를 붙여 넣어 주세요. 인증 시작은 화면 오버레이 버튼을 사용합니다.</p>
                 </div>
                 <div>
                     <h2 class="text-lg font-semibold text-gray-700 mb-2">2. 토큰 발급</h2>
@@ -982,6 +982,14 @@
         </div>
     </div>
 
+    <div id="authRequiredOverlay" class="hidden fixed inset-0 bg-black bg-opacity-70 z-40 flex items-center justify-center p-6">
+        <div class="bg-white rounded-xl shadow-2xl p-6 w-full max-w-md text-center">
+            <h2 class="text-xl font-bold text-gray-800 mb-3">Dropbox 인증 필요</h2>
+            <p class="text-sm text-gray-600 mb-5 leading-6">인증이 완료되어야 기능을 사용할 수 있습니다. 아래 버튼을 눌러 Dropbox 인증을 시작해 주세요.</p>
+            <button id="authRequiredStartButton" class="w-full bg-blue-600 text-white py-3 rounded-lg font-semibold hover:bg-blue-700 transition duration-300">인증 시작</button>
+        </div>
+    </div>
+
     <div id="authFailureOverlay" class="hidden fixed inset-0 bg-black bg-opacity-60 z-50 flex items-center justify-center p-6">
         <div class="bg-white rounded-xl shadow-2xl p-6 w-full max-w-md text-center">
             <h2 class="text-xl font-bold text-gray-800 mb-3">인증 정보 조회 실패</h2>
@@ -1094,9 +1102,11 @@
                 '패키지UI': { keywords: ['package_container', 'shop_event_package', 'package_container_info'], excludes:[], color: 'bg-orange-100 text-orange-800' }
             };
             
-            const authButton = document.getElementById('authButton');
+            const authRequiredOverlay = document.getElementById('authRequiredOverlay');
+            const authRequiredStartButton = document.getElementById('authRequiredStartButton');
             const tokenButton = document.getElementById('tokenButton');
             const authCodeInput = document.getElementById('authCodeInput');
+            const authStepsContainer = document.getElementById('authStepsContainer');
             const statusDiv = document.getElementById('status');
             const loaderOverlay = document.getElementById('loader-overlay');
             const searchInput = document.getElementById('searchInput');
@@ -1265,7 +1275,7 @@
             const DEFAULT_DOWNLOAD_GRID_HEIGHT = 180;
             
             // --- Event Listeners ---
-            authButton.addEventListener('click', startAuthentication);
+            authRequiredStartButton.addEventListener('click', startAuthentication);
             tokenButton.addEventListener('click', fetchAccessToken);
             resetAuthButton.addEventListener('click', resetAuthentication);
             authFailureResetButton.addEventListener('click', resetAuthentication);
@@ -1507,6 +1517,7 @@
                 const savedToken = localStorage.getItem('dropboxAccessToken');
                 
                 if (authCode) {
+                    hideAuthRequiredOverlay();
                     authCodeInput.value = authCode;
                     updateStatus("인증 코드를 확인했으며, 자동으로 토큰 발급을 시작합니다.", false);
                     const newUrl = window.location.origin + window.location.pathname;
@@ -1515,14 +1526,18 @@
                 } else if (savedToken) {
                     accessToken = savedToken;
                     hideAuthFailureOverlay();
+                    hideAuthRequiredOverlay();
                     updateStatus("저장된 인증 정보로 시작합니다.", false);
-                    document.getElementById('authStepsContainer').classList.add('hidden');
+                    authStepsContainer.classList.add('hidden');
                     controlsContainer.classList.remove('hidden');
                     resetAuthButton.classList.remove('hidden');
                     viewHierarchyButton.disabled = false;
                     viewHierarchyButton.classList.replace('bg-gray-800', 'bg-purple-600');
                     fetchRootFolders();
                     onNamingValidate();
+                } else {
+                    showAuthRequiredOverlay();
+                    updateStatus("Dropbox 인증이 필요합니다. 화면 중앙의 인증 시작 버튼을 눌러 주세요.", false);
                 }
                 
                 updateSelectAllCheckboxState();
@@ -1564,6 +1579,7 @@
             function showAuthFailureOverlay(message = '') {
                 isAuthFailureOverlayVisible = true;
                 setLoading(false);
+                hideAuthRequiredOverlay();
                 authFailureMessage.textContent = message || '저장된 인증 정보를 확인할 수 없습니다. 초기화 후 다시 인증해 주세요.';
                 authFailureOverlay.classList.remove('hidden');
                 resetAuthButton.classList.add('hidden');
@@ -1572,6 +1588,17 @@
             function hideAuthFailureOverlay() {
                 isAuthFailureOverlayVisible = false;
                 authFailureOverlay.classList.add('hidden');
+            }
+
+            function showAuthRequiredOverlay() {
+                if (accessToken || isAuthFailureOverlayVisible) {
+                    return;
+                }
+                authRequiredOverlay.classList.remove('hidden');
+            }
+
+            function hideAuthRequiredOverlay() {
+                authRequiredOverlay.classList.add('hidden');
             }
 
             function ensureDropboxAuthConfig() {
@@ -1639,12 +1666,13 @@
                     accessToken = data.access_token;
                     localStorage.setItem('dropboxAccessToken', accessToken);
                     hideAuthFailureOverlay();
+                    hideAuthRequiredOverlay();
                     updateStatus("액세스 토큰 발급 성공! 공유 폴더를 확인합니다.", false);
                     resetAuthButton.classList.remove('hidden');
                     viewHierarchyButton.disabled = false;
                     viewHierarchyButton.classList.replace('bg-gray-800', 'bg-purple-600');
                     
-                    document.getElementById('authStepsContainer').classList.add('hidden');
+                    authStepsContainer.classList.add('hidden');
                     controlsContainer.classList.remove('hidden');
                     
                     await fetchRootFolders();
