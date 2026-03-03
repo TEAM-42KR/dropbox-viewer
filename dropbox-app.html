@@ -288,6 +288,26 @@
             background-color: #f3f4f6;
             transform: translateY(-1px);
         }
+        .help-icon-btn {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            width: 1rem;
+            height: 1rem;
+            margin-top: 0.25rem;
+            margin-left: 0.375rem;
+            border-radius: 9999px;
+            border: 1px solid #9ca3af;
+            color: #6b7280;
+            font-size: 0.65rem;
+            font-weight: 700;
+            line-height: 1;
+            transition: all 0.2s ease;
+        }
+        .help-icon-btn:hover {
+            background-color: #f3f4f6;
+            color: #1f2937;
+        }
         html.theme-dark body {
             background-color: #0a0a0a !important;
             color: #e5e5e5;
@@ -306,6 +326,14 @@
         }
         html.theme-dark .theme-toggle-btn:hover {
             background-color: #2a2a2a;
+        }
+        html.theme-dark .help-icon-btn {
+            border-color: #5a5a5a;
+            color: #b5b5b5;
+        }
+        html.theme-dark .help-icon-btn:hover {
+            background-color: #2a2a2a;
+            color: #ffffff;
         }
         html.theme-dark .bg-white {
             background-color: #171717 !important;
@@ -509,7 +537,10 @@
                         <div id="validationStatus" class="text-xs text-green-700 mt-1"></div>
                         <button id="clearValidationButton" class="hidden text-xs text-red-500 hover:underline mt-1">검증 초기화</button>
                         <button id="resetValidationStateButton" class="text-xs text-gray-500 hover:underline mt-1">상태 초기화</button>
-                        <button id="openValidationWordsModalButton" class="text-xs text-blue-600 hover:underline mt-1">검증 단어 보기</button>
+                        <div class="flex items-center">
+                            <button id="openValidationWordsModalButton" class="text-xs text-blue-600 hover:underline mt-1">검증 단어 보기</button>
+                            <button id="openUsageHelpModalButton" class="help-icon-btn" type="button" title="앱 사용방법 보기" aria-label="앱 사용방법 보기">?</button>
+                        </div>
                         <button id="openNamingToolModalButton" class="mt-2 w-full bg-indigo-600 text-white py-2 rounded-lg font-semibold hover:bg-indigo-700 transition duration-300 text-xs">구글시트 도구 열기</button>
                     </div>
                 </div>
@@ -682,6 +713,26 @@
         </div>
     </div>
 
+    <div id="usageHelpModal" class="hidden fixed inset-0 bg-black bg-opacity-50 z-50 flex items-center justify-center p-4">
+        <div class="bg-white rounded-lg shadow-xl p-6 w-full max-w-2xl max-h-[90vh] overflow-y-auto">
+            <div class="flex justify-between items-center mb-4 gap-4">
+                <h2 class="text-xl font-bold">앱 사용방법</h2>
+                <button id="closeUsageHelpModalButton" class="text-gray-500 hover:text-gray-800 text-3xl leading-none" title="닫기" aria-label="닫기">&times;</button>
+            </div>
+            <div class="text-sm text-gray-700 space-y-3 leading-6">
+                <p>오타가 아닌데 빨간색으로 하이라이팅되는 단어는 아래 순서로 예외 처리하세요.</p>
+                <p>구글시트: <a href="https://docs.google.com/spreadsheets/d/10C8ozvhert1MHK6MQfsToNdYRJBDeOWPaQ5AKcHuH9Q/edit?gid=473946459#gid=473946459" target="_blank" rel="noopener noreferrer" class="text-blue-600 hover:underline break-all">https://docs.google.com/spreadsheets/d/10C8ozvhert1MHK6MQfsToNdYRJBDeOWPaQ5AKcHuH9Q/edit?gid=473946459#gid=473946459</a></p>
+                <p>처리 절차:</p>
+                <ul class="list-disc pl-5 space-y-1 text-gray-600">
+                    <li>1) 구글시트에서 새 탭을 생성합니다. (탭 이름은 자유)</li>
+                    <li>2) 새 탭의 첫 번째 컬럼 맨 위 셀에 <code>Keys</code>를 입력합니다.</li>
+                    <li>3) 그 아래 셀들에 빨간색 하이라이팅된 단어(오타가 아닌 단어)를 입력합니다.</li>
+                    <li>4) 시트를 다시 검증하면, 해당 단어들은 오타가 아닌 것으로 처리됩니다.</li>
+                </ul>
+            </div>
+        </div>
+    </div>
+
     <div id="authFailureOverlay" class="hidden fixed inset-0 bg-black bg-opacity-60 z-50 flex items-center justify-center p-6">
         <div class="bg-white rounded-xl shadow-2xl p-6 w-full max-w-md text-center">
             <h2 class="text-xl font-bold text-gray-800 mb-3">인증 정보 조회 실패</h2>
@@ -824,6 +875,7 @@
             const closeModalButton = document.getElementById('closeModalButton');
             const openNamingToolModalButton = document.getElementById('openNamingToolModalButton');
             const openValidationWordsModalButton = document.getElementById('openValidationWordsModalButton');
+            const openUsageHelpModalButton = document.getElementById('openUsageHelpModalButton');
             const namingValidateButton = document.getElementById('namingValidateButton');
             const namingToolStatus = document.getElementById('namingToolStatus');
             const namingToolError = document.getElementById('namingToolError');
@@ -833,6 +885,8 @@
             const validationWordsCount = document.getElementById('validationWordsCount');
             const validationWordsSearchInput = document.getElementById('validationWordsSearchInput');
             const validationWordsList = document.getElementById('validationWordsList');
+            const usageHelpModal = document.getElementById('usageHelpModal');
+            const closeUsageHelpModalButton = document.getElementById('closeUsageHelpModalButton');
             
             // --- Sorting Elements ---
             const sortByNameButton = document.getElementById('sort-by-name');
@@ -979,6 +1033,13 @@
             validationWordsModal.addEventListener('click', (e) => {
                 if (e.target === validationWordsModal) {
                     closeValidationWordsModal();
+                }
+            });
+            openUsageHelpModalButton.addEventListener('click', openUsageHelpModal);
+            closeUsageHelpModalButton.addEventListener('click', closeUsageHelpModal);
+            usageHelpModal.addEventListener('click', (e) => {
+                if (e.target === usageHelpModal) {
+                    closeUsageHelpModal();
                 }
             });
             validationWordsSearchInput.addEventListener('input', renderValidationWordsList);
@@ -2707,6 +2768,14 @@
         
         function closeValidationWordsModal() {
             validationWordsModal.classList.add('hidden');
+        }
+
+        function openUsageHelpModal() {
+            usageHelpModal.classList.remove('hidden');
+        }
+
+        function closeUsageHelpModal() {
+            usageHelpModal.classList.add('hidden');
         }
         
         async function ensureValidationFileWordsLoaded() {
