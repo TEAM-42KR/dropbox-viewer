@@ -577,6 +577,7 @@
             const APP_SECRET = "r0n8qvo7mxuae85"
             const REDIRECT_URI = window.location.origin + window.location.pathname;
             const TEAM_ROOT_FOLDER = '/TEAM42의 팀 폴더/Mafia42/마피아 이미지';
+            const ROOT_FOLDER_SELECTION_STORAGE_KEY = 'dropboxSelectedRootFolders';
             const GOOGLE_SHEET_CONFIG = {
                 spreadsheetId: '10C8ozvhert1MHK6MQfsToNdYRJBDeOWPaQ5AKcHuH9Q',
                 defaultSheetName: 'SKILL',
@@ -947,6 +948,7 @@
             function resetAuthentication() {
                 localStorage.removeItem('dropboxAccessToken');
                 localStorage.removeItem('dropboxFavorites');
+                localStorage.removeItem(ROOT_FOLDER_SELECTION_STORAGE_KEY);
                 accessToken = null;
                 window.location.href = REDIRECT_URI;
             }
@@ -1036,6 +1038,7 @@
                     if (!response.ok) throw new Error('루트 폴더 목록 가져오기 실패');
                     const data = await response.json();
                     const folders = data.entries.filter(entry => entry['.tag'] === 'folder' );
+                    const savedRootFolderSelection = loadSelectedRootFolders();
                     
                     rootFolderDropdownPanel.innerHTML = '';
                     folders.forEach(folder => {
@@ -1048,7 +1051,9 @@
                             checkbox.value = folder.path_display;
                             checkbox.className = 'h-4 w-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500';
                             
-                            if (folder.name === 'Engineering Team') {
+                            if (savedRootFolderSelection) {
+                                checkbox.checked = savedRootFolderSelection.has(folder.path_display);
+                            } else if (folder.name === 'Engineering Team') {
                                 checkbox.checked = true;
                             }
                             
@@ -1062,12 +1067,14 @@
                             rootFolderDropdownPanel.appendChild(item);
                             
                             checkbox.addEventListener('change', () => {
+                                saveSelectedRootFolders();
                                 updateRootFolderDropdownLabel();
                                 viewHierarchy();
                             });
                         }   
                     });
                     updateStatus(`업데이트 폴더 로딩 성공`, false);
+                    saveSelectedRootFolders();
                     updateRootFolderDropdownLabel();
                     await viewHierarchy();
                 } catch (error) {
@@ -2490,6 +2497,23 @@
         
         function saveFavorites() {
             localStorage.setItem('dropboxFavorites', JSON.stringify(Array.from(favoritedFolders.entries())));
+        }
+
+        function loadSelectedRootFolders() {
+            const savedValue = localStorage.getItem(ROOT_FOLDER_SELECTION_STORAGE_KEY);
+            if (savedValue === null) return null;
+            try {
+                const parsed = JSON.parse(savedValue);
+                if (!Array.isArray(parsed)) return null;
+                return new Set(parsed.filter(path => typeof path === 'string'));
+            } catch (error) {
+                return null;
+            }
+        }
+
+        function saveSelectedRootFolders() {
+            const selectedFolders = Array.from(rootFolderDropdownPanel.querySelectorAll('input[type="checkbox"]:checked')).map(cb => cb.value);
+            localStorage.setItem(ROOT_FOLDER_SELECTION_STORAGE_KEY, JSON.stringify(selectedFolders));
         }
         
         function isFavorited(path) {
