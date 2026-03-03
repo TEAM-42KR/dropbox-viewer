@@ -266,15 +266,136 @@
         .tag-filter-chip.selected:hover {
             filter: brightness(1.1);
         }
+        .theme-toggle-btn {
+            position: fixed;
+            top: 1rem;
+            right: 1rem;
+            z-index: 60;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            border-radius: 9999px;
+            border: 1px solid #d1d5db;
+            background-color: #ffffff;
+            color: #1f2937;
+            width: 2.5rem;
+            height: 2.5rem;
+            font-size: 1.1rem;
+            box-shadow: 0 1px 3px 0 rgb(0 0 0 / 0.1);
+            transition: all 0.2s ease;
+        }
+        .theme-toggle-btn:hover {
+            background-color: #f3f4f6;
+            transform: translateY(-1px);
+        }
+        html.theme-dark body {
+            background-color: #0a0a0a !important;
+            color: #e5e5e5;
+        }
+        html.theme-dark #side-nav {
+            background-color: #111111 !important;
+            border-color: #2f2f2f !important;
+        }
+        html.theme-dark #main-content {
+            background-color: #0f0f0f !important;
+        }
+        html.theme-dark .theme-toggle-btn {
+            background-color: #1a1a1a;
+            border-color: #3a3a3a;
+            color: #f5f5f5;
+        }
+        html.theme-dark .theme-toggle-btn:hover {
+            background-color: #2a2a2a;
+        }
+        html.theme-dark .bg-white {
+            background-color: #171717 !important;
+        }
+        html.theme-dark .bg-gray-50 {
+            background-color: #121212 !important;
+        }
+        html.theme-dark .bg-gray-100 {
+            background-color: #1a1a1a !important;
+        }
+        html.theme-dark .bg-gray-200 {
+            background-color: #262626 !important;
+        }
+        html.theme-dark .text-gray-900 {
+            color: #fafafa !important;
+        }
+        html.theme-dark .text-gray-800 {
+            color: #f0f0f0 !important;
+        }
+        html.theme-dark .text-gray-700 {
+            color: #e0e0e0 !important;
+        }
+        html.theme-dark .text-gray-600 {
+            color: #c8c8c8 !important;
+        }
+        html.theme-dark .text-gray-500 {
+            color: #a3a3a3 !important;
+        }
+        html.theme-dark .text-gray-400 {
+            color: #8a8a8a !important;
+        }
+        html.theme-dark .border,
+        html.theme-dark .border-b,
+        html.theme-dark .border-r,
+        html.theme-dark .border-t,
+        html.theme-dark .border-gray-200,
+        html.theme-dark .border-gray-300 {
+            border-color: #3f3f3f !important;
+        }
+        html.theme-dark .hover\:bg-gray-100:hover {
+            background-color: #2a2a2a !important;
+        }
+        html.theme-dark .hover\:text-gray-900:hover {
+            color: #ffffff !important;
+        }
+        html.theme-dark .hover\:text-gray-800:hover {
+            color: #ffffff !important;
+        }
+        html.theme-dark input,
+        html.theme-dark select,
+        html.theme-dark textarea {
+            background-color: #0d0d0d;
+            color: #e5e5e5;
+            border-color: #3f3f3f !important;
+        }
+        html.theme-dark mark {
+            background-color: #5a4a00;
+            color: #fff3a3;
+        }
+        html.theme-dark .list-view-item:hover,
+        html.theme-dark .column-item:hover {
+            background-color: #2a2a2a;
+        }
+        html.theme-dark .list-view-item.selected,
+        html.theme-dark .column-item.multi-selected {
+            background-color: #3a3a3a;
+            color: #f5f5f5;
+        }
+        html.theme-dark .column-item.selected {
+            background-color: #4a4a4a;
+            color: #ffffff;
+        }
     </style>
+    <script>
+        (function applyInitialTheme() {
+            const savedTheme = localStorage.getItem('dropboxTheme');
+            const prefersDark = window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches;
+            const shouldUseDark = savedTheme ? savedTheme === 'dark' : prefersDark;
+            document.documentElement.classList.toggle('theme-dark', shouldUseDark);
+        })();
+    </script>
 </head>
 <body class="bg-gray-100">
+    <button id="themeToggleButton" class="theme-toggle-btn" type="button" title="다크/라이트 테마 전환" aria-label="다크/라이트 테마 전환">🌙</button>
     
     <div class="flex h-screen">
         <!-- Left Sidebar -->
         <nav id="side-nav" class="w-96 bg-white p-6 flex-shrink-0 flex flex-col h-full overflow-y-auto border-r">
             <div class="flex items-center justify-center mb-4">
-                <h1 class="text-2xl font-bold text-center text-gray-800">Dropbox 다운로더</h1>
+                <h1 class="text-2xl font-bold text-center text-gray-800">Dropbox 뷰어</h1>
                 <button id="resetAuthButton" class="ml-4 text-sm text-red-500 hover:text-red-700 font-semibold hidden" title="인증 정보를 삭제하고 다시 시작합니다.">초기화</button>
             </div>
             
@@ -723,6 +844,7 @@
             const validationStatus = document.getElementById('validationStatus');
             const clearValidationButton = document.getElementById('clearValidationButton');
             const resetValidationStateButton = document.getElementById('resetValidationStateButton');
+            const themeToggleButton = document.getElementById('themeToggleButton');
             
             // --- State Variables ---
             let accessToken = null;
@@ -783,6 +905,7 @@
             selectAllCheckbox.addEventListener('click', handleSelectAllClick);
             clearValidationButton.addEventListener('click', clearValidation);
             resetValidationStateButton.addEventListener('click', resetValidationState);
+            themeToggleButton.addEventListener('click', toggleTheme);
             
             // Root Folder Dropdown Listener
             rootFolderDropdownButton.addEventListener('click', () => {
@@ -883,6 +1006,7 @@
             initializeApp();
             
             function initializeApp() {
+                initializeTheme();
                 hideAuthFailureOverlay();
                 if (!ensureDropboxAuthConfig()) {
                     return;
@@ -917,6 +1041,35 @@
                 updateSelectAllCheckboxState();
                 updateSortIndicators();
                 switchView(currentView);
+            }
+
+            function updateThemeToggleButton() {
+                const isDark = document.documentElement.classList.contains('theme-dark');
+                themeToggleButton.textContent = isDark ? '🌙' : '☀️';
+                themeToggleButton.setAttribute('title', isDark ? '라이트 테마로 변경' : '다크 테마로 변경');
+                themeToggleButton.setAttribute('aria-label', isDark ? '라이트 테마로 변경' : '다크 테마로 변경');
+            }
+
+            function setTheme(theme) {
+                const isDark = theme === 'dark';
+                document.documentElement.classList.toggle('theme-dark', isDark);
+                localStorage.setItem('dropboxTheme', isDark ? 'dark' : 'light');
+                updateThemeToggleButton();
+            }
+
+            function initializeTheme() {
+                const savedTheme = localStorage.getItem('dropboxTheme');
+                if (savedTheme === 'dark' || savedTheme === 'light') {
+                    setTheme(savedTheme);
+                    return;
+                }
+                const prefersDark = window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches;
+                setTheme(prefersDark ? 'dark' : 'light');
+            }
+
+            function toggleTheme() {
+                const isDark = document.documentElement.classList.contains('theme-dark');
+                setTheme(isDark ? 'light' : 'dark');
             }
             
             
