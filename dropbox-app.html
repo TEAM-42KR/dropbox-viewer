@@ -532,6 +532,14 @@
             <p>네이밍 테스트 모달 팝업입니다.</p>
         </div>
     </div>
+
+    <div id="authFailureOverlay" class="hidden fixed inset-0 bg-black bg-opacity-60 z-50 flex items-center justify-center p-6">
+        <div class="bg-white rounded-xl shadow-2xl p-6 w-full max-w-md text-center">
+            <h2 class="text-xl font-bold text-gray-800 mb-3">인증 정보 조회 실패</h2>
+            <p id="authFailureMessage" class="text-sm text-gray-600 mb-5">저장된 인증 정보를 확인할 수 없습니다. 초기화 후 다시 인증해 주세요.</p>
+            <button id="authFailureResetButton" class="w-full bg-red-600 text-white py-3 rounded-lg font-semibold hover:bg-red-700 transition duration-300">초기화</button>
+        </div>
+    </div>
     
     
     <script>
@@ -594,6 +602,9 @@
             const resetAuthButton = document.getElementById('resetAuthButton');
             const controlsContainer = document.getElementById('controlsContainer');
             const tagFilterContainer = document.getElementById('tag-filter-container');
+            const authFailureOverlay = document.getElementById('authFailureOverlay');
+            const authFailureMessage = document.getElementById('authFailureMessage');
+            const authFailureResetButton = document.getElementById('authFailureResetButton');
             
             // --- Root Folder Dropdown ---
             const rootFolderDropdownButton = document.getElementById('rootFolderDropdownButton');
@@ -675,11 +686,13 @@
             let filterByValidationError = false;
             let rootNamespaceId = null;
             let treeState = new Map(); // Stores collapsed state for tree view folders
+            let isAuthFailureOverlayVisible = false;
             
             // --- Event Listeners ---
             authButton.addEventListener('click', startAuthentication);
             tokenButton.addEventListener('click', fetchAccessToken);
             resetAuthButton.addEventListener('click', resetAuthentication);
+            authFailureResetButton.addEventListener('click', resetAuthentication);
             searchInput.addEventListener('input', handleSearch);
             caseSensitiveCheckbox.addEventListener('change', handleSearch);
             includeFoldersCheckbox.addEventListener('change', handleSearch);
@@ -798,6 +811,10 @@
             initializeApp();
             
             function initializeApp() {
+                hideAuthFailureOverlay();
+                if (!ensureDropboxAuthConfig()) {
+                    return;
+                }
                 loadFavorites();
                 loadValidationDictionary();
                 renderTagFilters();
@@ -813,6 +830,7 @@
                     tokenButton.click();
                 } else if (savedToken) {
                     accessToken = savedToken;
+                    hideAuthFailureOverlay();
                     updateStatus("저장된 인증 정보로 시작합니다.", false);
                     document.getElementById('authStepsContainer').classList.add('hidden');
                     controlsContainer.classList.remove('hidden');
@@ -829,6 +847,30 @@
             
             
             // --- Authentication Functions ---
+            function showAuthFailureOverlay(message = '') {
+                isAuthFailureOverlayVisible = true;
+                setLoading(false);
+                authFailureMessage.textContent = message || '저장된 인증 정보를 확인할 수 없습니다. 초기화 후 다시 인증해 주세요.';
+                authFailureOverlay.classList.remove('hidden');
+                resetAuthButton.classList.add('hidden');
+            }
+            
+            function hideAuthFailureOverlay() {
+                isAuthFailureOverlayVisible = false;
+                authFailureOverlay.classList.add('hidden');
+            }
+
+            function ensureDropboxAuthConfig() {
+                const isMissing = !APP_KEY || !APP_KEY.trim() || !APP_SECRET || !APP_SECRET.trim();
+                if (!isMissing) {
+                    return true;
+                }
+
+                showAuthFailureOverlay('Dropbox 인증 키가 설정되어 있지 않습니다. 초기화 후 설정을 확인해 주세요.');
+                updateStatus('오류: Dropbox 인증 키(APP_KEY/APP_SECRET)가 없습니다.', true);
+                return false;
+            }
+            
             function resetAuthentication() {
                 localStorage.removeItem('dropboxAccessToken');
                 localStorage.removeItem('dropboxFavorites');
@@ -837,6 +879,7 @@
             }
             
             async function startAuthentication() {
+                if (!ensureDropboxAuthConfig()) return;
                 const codeVerifier = generateRandomString(128);
                 localStorage.setItem('dropboxCodeVerifier', codeVerifier);
                 const codeChallenge = await generateCodeChallenge(codeVerifier);
@@ -852,6 +895,7 @@
             }
             
             async function fetchAccessToken() {
+                if (!ensureDropboxAuthConfig()) return;
                 const code = authCodeInput.value;
                 const codeVerifier = localStorage.getItem('dropboxCodeVerifier');
                 if (!code) {
@@ -879,6 +923,7 @@
                     
                     accessToken = data.access_token;
                     localStorage.setItem('dropboxAccessToken', accessToken);
+                    hideAuthFailureOverlay();
                     updateStatus("액세스 토큰 발급 성공! 공유 폴더를 확인합니다.", false);
                     resetAuthButton.classList.remove('hidden');
                     viewHierarchyButton.disabled = false;
@@ -982,9 +1027,11 @@
                     if (!accountResponse.ok) throw new Error('계정 정보 조회 실패');
                     const accountData = await accountResponse.json();
                     rootNamespaceId = accountData.root_info.root_namespace_id;
+                    hideAuthFailureOverlay();
                     console.log('🚀 . index.html . rootNamespaceId:', rootNamespaceId)
                     return rootNamespaceId;
                 } catch (error) {
+                    showAuthFailureOverlay('저장된 인증 정보를 조회하지 못했습니다. 초기화 후 다시 인증해 주세요.');
                     updateStatus(`팀 정보 조회 실패: ${error.message}`, true);
                     throw error;
                 }
@@ -2700,6 +2747,9 @@
         }
         
         function setLoading(isLoading, message = "") {
+            if (isAuthFailureOverlayVisible && isLoading) {
+                return;
+            }
             loaderOverlay.classList.toggle('hidden', !isLoading);
             if (isLoading) updateStatus(message, false);
         }
