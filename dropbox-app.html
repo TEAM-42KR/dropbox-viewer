@@ -190,12 +190,76 @@
         }
         
         /* --- Image Placeholder Styles --- */
-        .image-placeholder-item {
+        .download-image-card {
+            display: flex;
+            flex-direction: column;
+            gap: 0.375rem;
+        }
+        .download-image-visual {
             width: 100%;
-            padding-top: 100%;
+            height: var(--download-card-height, 180px);
             position: relative;
-            background-color: #4b5563;
             border-radius: 0.375rem;
+            overflow: hidden;
+            border: 2px solid #9ca3af;
+            background-color: #4b5563;
+        }
+        .download-image-visual img {
+            width: 100%;
+            height: 100%;
+            object-fit: contain;
+            display: block;
+            cursor: pointer;
+        }
+        .download-image-caption {
+            font-size: 0.75rem;
+            line-height: 1rem;
+            color: #374151;
+            font-weight: 500;
+            display: block;
+            width: 100%;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+            text-align: center;
+        }
+        .download-color-preview {
+            width: 100%;
+            height: 100%;
+            display: flex;
+            align-items: flex-end;
+            justify-content: center;
+            padding: 0.5rem;
+            box-sizing: border-box;
+        }
+        .download-color-code {
+            font-size: 0.75rem;
+            line-height: 1rem;
+            font-weight: 600;
+            color: #f9fafb;
+            background-color: rgba(17, 24, 39, 0.7);
+            border-radius: 0.25rem;
+            padding: 0.125rem 0.375rem;
+            max-width: 100%;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+        }
+        .download-text-fallback {
+            width: 100%;
+            height: 100%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 0.75rem;
+            font-weight: 600;
+            color: #d1d5db;
+            background: linear-gradient(135deg, #374151, #1f2937);
+        }
+        .image-placeholder-item {
+            position: absolute;
+            inset: 0;
+            background-color: #4b5563;
         }
         .placeholder-loader {
             position: absolute;
@@ -382,6 +446,9 @@
         html.theme-dark .hover\:text-gray-800:hover {
             color: #ffffff !important;
         }
+        html.theme-dark .download-image-caption {
+            color: #d1d5db;
+        }
         html.theme-dark input,
         html.theme-dark select,
         html.theme-dark textarea {
@@ -458,7 +525,10 @@
                         </div>
                     </div>
                     <div>
-                        <label for="extensionSelector" class="block text-sm font-medium text-gray-700 mb-1">확장자:</label>
+                        <div class="flex items-center mb-1">
+                            <label for="extensionSelector" class="block text-sm font-medium text-gray-700">확장자:</label>
+                            <button id="openExtensionHelpModalButton" class="help-icon-btn" type="button" title="확장자 안내 보기" aria-label="확장자 안내 보기">?</button>
+                        </div>
                         <select id="extensionSelector" class="w-full border border-gray-300 p-2 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent transition">
                             <option value="all">모든 콘텐츠</option>
                             <option value="webp">WebP</option>
@@ -532,7 +602,7 @@
                     </div>
                     <!-- Naming Convention Check Section -->
                     <div class="pt-4 border-t">
-                        <label class="block text-sm font-medium text-gray-700 mb-1">네이밍 규칙 검증:</label>
+                        <label class="block text-sm font-medium text-gray-700 mb-1">직업 네이밍 테스트:</label>
                         <p class="text-xs text-gray-500 mb-2">'spell-check-dictionary.txt' 파일을 자동으로 불러옵니다.</p>
                         <div id="validationStatus" class="text-xs text-green-700 mt-1"></div>
                         <button id="clearValidationButton" class="hidden text-xs text-red-500 hover:underline mt-1">검증 초기화</button>
@@ -541,7 +611,7 @@
                             <button id="openValidationWordsModalButton" class="text-xs text-blue-600 hover:underline mt-1">검증 단어 보기</button>
                             <button id="openUsageHelpModalButton" class="help-icon-btn" type="button" title="앱 사용방법 보기" aria-label="앱 사용방법 보기">?</button>
                         </div>
-                        <button id="openNamingToolModalButton" class="mt-2 w-full bg-indigo-600 text-white py-2 rounded-lg font-semibold hover:bg-indigo-700 transition duration-300 text-xs">구글시트 도구 열기</button>
+                        <button id="openJobStandardListModalButton" class="mt-2 w-full bg-white text-indigo-700 py-2 rounded-lg font-semibold border border-indigo-300 hover:bg-indigo-50 transition duration-300 text-xs">직업 리스트 표준 보기</button>
                     </div>
                 </div>
                 
@@ -617,15 +687,30 @@
     <!-- Download Modal -->
     <div id="downloadModal" class="hidden fixed inset-0 bg-black bg-opacity-60 z-50 flex items-center justify-center p-4">
         <div class="bg-white rounded-lg shadow-xl w-full max-w-6xl h-full max-h-[90vh] flex flex-col">
-            <div class="flex justify-between items-center p-4 border-b">
+            <div class="flex justify-between items-center p-4 border-b gap-4">
                 <div class="flex items-center gap-4">
                     <h2 class="text-xl font-bold">다운로드된 이미지</h2>
-                    <button id="saveAllLocallyButton" class="hidden bg-blue-600 text-white py-2 px-4 rounded-lg font-semibold hover:bg-blue-700 transition duration-300 text-sm">로컬에 모두 저장</button>
                 </div>
-                <button id="closeDownloadModal" class="text-gray-500 hover:text-gray-800 text-3xl">&times;</button>
+                <div class="flex items-center gap-3">
+                    <div class="flex items-center gap-2 text-xs text-gray-600">
+                        <label for="downloadGridColsRange" class="font-medium">가로</label>
+                        <input id="downloadGridColsRange" type="range" min="2" max="10" step="1" value="6" class="w-20">
+                        <span id="downloadGridColsValue" class="w-5 text-right text-gray-700">6</span>
+                    </div>
+                    <div class="flex items-center gap-2 text-xs text-gray-600">
+                        <label for="downloadGridHeightRange" class="font-medium">세로</label>
+                        <input id="downloadGridHeightRange" type="range" min="120" max="280" step="10" value="180" class="w-24">
+                        <span id="downloadGridHeightValue" class="w-9 text-right text-gray-700">180</span>
+                    </div>
+                    <button id="downloadGridResetButton" class="text-xs px-2 py-1 border border-gray-300 rounded hover:bg-gray-100 text-gray-700" type="button">초기화</button>
+                    <button id="closeDownloadModal" class="text-gray-500 hover:text-gray-800 text-3xl leading-none">&times;</button>
+                </div>
             </div>
-            <div id="imageContainer" class="p-6 flex-grow overflow-y-auto grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-4 content-start">
+            <div id="imageContainer" class="p-6 flex-grow overflow-y-auto grid gap-4 content-start">
                 <span id="imagePlaceholder" class="text-gray-400 col-span-full text-center self-center">다운로드된 이미지가 여기에 표시됩니다</span>
+            </div>
+            <div class="p-4 border-t flex justify-end">
+                <button id="saveAllLocallyButton" class="hidden bg-blue-600 text-white py-2 px-4 rounded-lg font-semibold hover:bg-blue-700 transition duration-300 text-sm">로컬에 모두 저장</button>
             </div>
             <div id="progressContainerWrapper" class="hidden p-4 border-t">
                 <div id="progressContainer" class="w-full bg-gray-200 rounded-full h-2.5 mb-2">
@@ -634,6 +719,11 @@
                 <div id="progressText" class="text-center text-sm text-gray-700"></div>
             </div>
         </div>
+    </div>
+    
+    <div id="downloadImageLightbox" class="hidden fixed inset-0 z-[60] bg-black bg-opacity-85 p-4 flex items-center justify-center">
+        <button id="closeDownloadImageLightbox" type="button" title="확대 보기 닫기" class="absolute top-4 right-5 text-white text-4xl leading-none hover:text-gray-300">&times;</button>
+        <img id="downloadImageLightboxImage" src="" alt="확대 이미지 미리보기" class="max-w-full max-h-full object-contain rounded-md shadow-2xl">
     </div>
     
     
@@ -659,7 +749,7 @@
         </button>
         <button id="contextMenuNamingTest" class="w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-100 flex items-center">
             <span class="mr-2">🧪</span>
-            <span>네이밍 테스트</span>
+            <span>직업 네이밍 테스트</span>
         </button>
         <div id="contextMenuViewOptions" class="hidden border-t mt-1 pt-1">
             <button id="contextMenuShowInTree" class="w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-100 flex items-center">
@@ -693,6 +783,84 @@
             <pre id="namingToolResult" class="mt-3 bg-gray-900 text-gray-100 rounded-lg p-3 text-xs overflow-auto max-h-96"></pre>
         </div>
     </div>
+
+    <div id="jobNamingTestModal" class="hidden fixed inset-0 bg-black bg-opacity-50 z-50 flex items-center justify-center p-4">
+        <div class="bg-white rounded-lg shadow-xl p-6 w-full max-w-4xl h-[90vh] flex flex-col overflow-hidden">
+            <div class="flex justify-between items-center mb-4 gap-4">
+                <h2 class="text-xl font-bold">직업 네이밍 테스트</h2>
+                <button id="closeJobNamingTestModalButton" class="text-gray-500 hover:text-gray-800 text-3xl leading-none" type="button">&times;</button>
+            </div>
+            <p class="text-sm text-gray-700">현재 선택/열람 중인 폴더의 파일명을 기준으로 직업 키워드 포함 여부를 검사합니다.</p>
+            <div class="mt-3 flex flex-wrap items-center gap-2">
+                <span id="jobNamingTestFolderPath" class="text-xs text-gray-600 break-all"></span>
+            </div>
+            <div id="jobNamingTestStatus" class="mt-3 text-sm text-gray-600">
+                모달이 열리면 자동으로 결과가 표시됩니다.
+            </div>
+            <div id="jobNamingTestSummary" class="mt-2 text-sm text-gray-700"></div>
+            <div class="mt-3 border border-gray-200 rounded-lg overflow-hidden">
+                <div class="bg-gray-50 border-b border-gray-200">
+                    <div class="px-3 pt-2 border-b border-gray-200">
+                        <div class="flex flex-wrap items-end gap-5">
+                            <button id="jobNamingSortByCode" type="button" class="px-1 py-2 -mb-px border-b-4 border-transparent text-base sm:text-lg font-bold text-gray-400 hover:text-gray-600">잡코드 순</button>
+                            <button id="jobNamingSortByName" type="button" class="px-1 py-2 -mb-px border-b-4 border-transparent text-base sm:text-lg font-bold text-gray-400 hover:text-gray-600">직업명 ABC 순</button>
+                        </div>
+                    </div>
+                    <div class="px-3 py-3">
+                        <div class="flex flex-wrap items-center gap-2">
+                            <button id="jobNamingTabNonGendered" type="button" class="px-3 py-1.5 rounded-md text-xs font-semibold border">성별 비포함</button>
+                            <button id="jobNamingTabGendered" type="button" class="px-3 py-1.5 rounded-md text-xs font-semibold border">성별 포함(전체)</button>
+                        </div>
+                        <div id="jobNamingActiveTabSummary" class="mt-2 text-xs font-semibold text-gray-700"></div>
+                    </div>
+                </div>
+                <div class="max-h-[55vh] overflow-auto">
+                <table class="w-full text-sm">
+                    <thead class="bg-gray-50 sticky top-0">
+                        <tr>
+                            <th class="text-left px-3 py-2 border-b">번호</th>
+                            <th class="text-left px-3 py-2 border-b">한글</th>
+                            <th class="text-left px-3 py-2 border-b">영문</th>
+                            <th class="text-left px-3 py-2 border-b">결과</th>
+                        </tr>
+                    </thead>
+                    <tbody id="jobNamingTestTableBody" class="divide-y divide-gray-100"></tbody>
+                </table>
+                <div id="jobNamingEmptyState" class="hidden p-4 text-sm text-gray-500 text-center">
+                    선택한 탭에 표시할 항목이 없습니다.
+                </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div id="jobStandardListModal" class="hidden fixed inset-0 bg-black bg-opacity-50 z-50 flex items-center justify-center p-4">
+        <div class="bg-white rounded-lg shadow-xl p-6 w-full max-w-3xl max-h-[90vh] overflow-y-auto">
+            <div class="flex justify-between items-center mb-3 gap-4">
+                <h2 class="text-xl font-bold">직업 리스트 표준</h2>
+                <button id="closeJobStandardListModalButton" class="text-gray-500 hover:text-gray-800 text-3xl leading-none" type="button">&times;</button>
+            </div>
+            <div class="mb-3 flex flex-wrap items-center gap-2">
+                <button id="jobStandardListTabAll" type="button" class="px-3 py-1.5 rounded-md text-xs font-semibold border">전체</button>
+                <button id="jobStandardListTabNonGendered" type="button" class="px-3 py-1.5 rounded-md text-xs font-semibold border">성별 비포함</button>
+                <button id="jobStandardListTabGendered" type="button" class="px-3 py-1.5 rounded-md text-xs font-semibold border">성별 포함</button>
+            </div>
+            <div id="jobStandardListCount" class="text-sm text-gray-700 mb-3"></div>
+            <div class="max-h-[65vh] overflow-auto border border-gray-200 rounded-lg">
+                <table class="w-full text-sm">
+                    <thead class="bg-gray-50 sticky top-0">
+                        <tr>
+                            <th class="text-left px-3 py-2 border-b">번호</th>
+                            <th class="text-left px-3 py-2 border-b">한글</th>
+                            <th class="text-left px-3 py-2 border-b">영문</th>
+                            <th class="text-left px-3 py-2 border-b">구분</th>
+                        </tr>
+                    </thead>
+                    <tbody id="jobStandardListTableBody" class="divide-y divide-gray-100"></tbody>
+                </table>
+            </div>
+        </div>
+    </div>
     
     <div id="validationWordsModal" class="hidden fixed inset-0 bg-black bg-opacity-50 z-50 flex items-center justify-center p-4">
         <div class="bg-white rounded-lg shadow-xl p-6 w-full max-w-3xl max-h-[90vh] flex flex-col">
@@ -716,7 +884,7 @@
     <div id="usageHelpModal" class="hidden fixed inset-0 bg-black bg-opacity-50 z-50 flex items-center justify-center p-4">
         <div class="bg-white rounded-lg shadow-xl p-6 w-full max-w-2xl max-h-[90vh] overflow-y-auto">
             <div class="flex justify-between items-center mb-4 gap-4">
-                <h2 class="text-xl font-bold">앱 사용방법</h2>
+                <h2 class="text-xl font-bold">오타 하이라이팅 기능 보완 방법</h2>
                 <button id="closeUsageHelpModalButton" class="text-gray-500 hover:text-gray-800 text-3xl leading-none" title="닫기" aria-label="닫기">&times;</button>
             </div>
             <div class="text-sm text-gray-700 space-y-3 leading-6">
@@ -724,12 +892,22 @@
                 <p>구글시트: <a href="https://docs.google.com/spreadsheets/d/10C8ozvhert1MHK6MQfsToNdYRJBDeOWPaQ5AKcHuH9Q/edit?gid=473946459#gid=473946459" target="_blank" rel="noopener noreferrer" class="text-blue-600 hover:underline break-all">https://docs.google.com/spreadsheets/d/10C8ozvhert1MHK6MQfsToNdYRJBDeOWPaQ5AKcHuH9Q/edit?gid=473946459#gid=473946459</a></p>
                 <p>처리 절차:</p>
                 <ul class="list-disc pl-5 space-y-1 text-gray-600">
-                    <li>1) 구글시트에서 새 탭을 생성합니다. (탭 이름은 자유)</li>
+                    <li>1) 구글시트에서 새 탭을 생성하고 탭 이름을 <code>WORD_FOR_DROPBOX_VIEWER</code>로 설정합니다.</li>
                     <li>2) 새 탭의 첫 번째 컬럼 맨 위 셀에 <code>Keys</code>를 입력합니다.</li>
                     <li>3) 그 아래 셀들에 빨간색 하이라이팅된 단어(오타가 아닌 단어)를 입력합니다.</li>
                     <li>4) 시트를 다시 검증하면, 해당 단어들은 오타가 아닌 것으로 처리됩니다.</li>
                 </ul>
             </div>
+        </div>
+    </div>
+    
+    <div id="extensionHelpModal" class="hidden fixed inset-0 bg-black bg-opacity-50 z-50 flex items-center justify-center p-4">
+        <div class="bg-white rounded-lg shadow-xl p-6 w-full max-w-md">
+            <div class="flex justify-between items-center mb-4 gap-4">
+                <h2 class="text-xl font-bold">확장자 안내</h2>
+                <button id="closeExtensionHelpModalButton" class="text-gray-500 hover:text-gray-800 text-3xl leading-none" title="닫기" aria-label="닫기">&times;</button>
+            </div>
+            <p class="text-sm text-gray-700 leading-6">heif 이미지는 렌더링이 불가합니다.</p>
         </div>
     </div>
 
@@ -755,6 +933,52 @@
                 defaultSheetName: 'SKILL',
                 lineLimit: 0
             };
+            const JOB_NAMING_RULES = [
+                { no: 1, ko: '마피아', en: 'mafia' },
+                { no: 2, ko: '경찰', en: 'police' },
+                { no: 3, ko: '의사', en: 'doctor' },
+                { no: 4, ko: '스파이', en: 'spy' },
+                { no: 5, ko: '시민', en: 'citizen' },
+                { no: 6, ko: '영매', en: 'shaman' },
+                { no: 7, ko: '군인', en: 'soldier' },
+                { no: 8, ko: '정치인', en: 'politician' },
+                { no: 9, ko: '연인', en: 'lover' },
+                { no: '9-1', ko: '남자 연인', en: 'lover_man' },
+                { no: '9-2', ko: '여자 연인', en: 'lover_woman' },
+                { no: 10, ko: '기자', en: 'reporter' },
+                { no: 11, ko: '짐승인간', en: 'beastman' },
+                { no: 12, ko: '건달', en: 'gangster' },
+                { no: 13, ko: '사립탐정', en: 'detective' },
+                { no: 14, ko: '도굴꾼', en: 'ghoul' },
+                { no: 15, ko: '테러리스트', en: 'terrorist' },
+                { no: 16, ko: '마담', en: 'madam' },
+                { no: 17, ko: '성직자', en: 'priest' },
+                { no: 18, ko: '악인', en: 'villain' },
+                { no: 19, ko: '예언자', en: 'prophet' },
+                { no: 20, ko: '판사', en: 'judge' },
+                { no: 21, ko: '도둑', en: 'thief' },
+                { no: 22, ko: '간호사', en: 'nurse' },
+                { no: 23, ko: '교주', en: 'cultleader' },
+                { no: 24, ko: '자경단원', en: 'vigilante' },
+                { no: 25, ko: '마술사', en: 'magician' },
+                { no: 26, ko: '마녀', en: 'witch' },
+                { no: 27, ko: '과학자', en: 'scientist' },
+                { no: 28, ko: '해커', en: 'hacker' },
+                { no: 29, ko: '심리학자', en: 'mentalist' },
+                { no: 30, ko: '광신도', en: 'fanatic' },
+                { no: 31, ko: '용병', en: 'mercenary' },
+                { no: 32, ko: '공무원', en: 'official' },
+                { no: 33, ko: '사기꾼', en: 'pretender' },
+                { no: 34, ko: '청부업자', en: 'hitman' },
+                { no: 35, ko: '비밀결사', en: 'cabal' },
+                { no: '35-1', ko: '비밀결사 남자', en: 'cabal_man' },
+                { no: '35-2', ko: '비밀결사 여자', en: 'cabal_woman' },
+                { no: 36, ko: '파파라치', en: 'paparazzi' },
+                { no: 37, ko: '요원', en: 'agent' },
+                { no: 38, ko: '최면술사', en: 'hypnotist' },
+                { no: 39, ko: '점쟁이', en: 'fortuneteller' },
+                { no: 40, ko: '대부', en: 'godfather' }
+            ];
             const DEFAULT_SHEET_OPTIONS = [
                 'SKILL',
                 'GENERAL',
@@ -764,7 +988,8 @@
                 'COLLECTION',
                 'JOB',
                 'TEST1',
-                'TEST2'
+                'TEST2',
+                'WORD_FOR_DROPBOX_VIEWER'
             ];
             
             const LOCALE_MAP = {
@@ -854,6 +1079,14 @@
             const progressBar = document.getElementById('progressBar');
             const progressText = document.getElementById('progressText');
             const saveAllLocallyButton = document.getElementById('saveAllLocallyButton');
+            const downloadGridColsRange = document.getElementById('downloadGridColsRange');
+            const downloadGridColsValue = document.getElementById('downloadGridColsValue');
+            const downloadGridHeightRange = document.getElementById('downloadGridHeightRange');
+            const downloadGridHeightValue = document.getElementById('downloadGridHeightValue');
+            const downloadGridResetButton = document.getElementById('downloadGridResetButton');
+            const downloadImageLightbox = document.getElementById('downloadImageLightbox');
+            const closeDownloadImageLightboxButton = document.getElementById('closeDownloadImageLightbox');
+            const downloadImageLightboxImage = document.getElementById('downloadImageLightboxImage');
             
             // --- Popover Elements ---
             const imagePreviewPopover = document.getElementById('imagePreviewPopover');
@@ -873,13 +1106,33 @@
             // --- Modal Elements ---
             const namingTestModal = document.getElementById('namingTestModal');
             const closeModalButton = document.getElementById('closeModalButton');
-            const openNamingToolModalButton = document.getElementById('openNamingToolModalButton');
+            const openJobStandardListModalButton = document.getElementById('openJobStandardListModalButton');
+            const jobNamingTestModal = document.getElementById('jobNamingTestModal');
+            const closeJobNamingTestModalButton = document.getElementById('closeJobNamingTestModalButton');
+            const jobNamingTestFolderPath = document.getElementById('jobNamingTestFolderPath');
+            const jobStandardListModal = document.getElementById('jobStandardListModal');
+            const closeJobStandardListModalButton = document.getElementById('closeJobStandardListModalButton');
+            const jobStandardListTabAll = document.getElementById('jobStandardListTabAll');
+            const jobStandardListTabNonGendered = document.getElementById('jobStandardListTabNonGendered');
+            const jobStandardListTabGendered = document.getElementById('jobStandardListTabGendered');
+            const jobStandardListCount = document.getElementById('jobStandardListCount');
+            const jobStandardListTableBody = document.getElementById('jobStandardListTableBody');
             const openValidationWordsModalButton = document.getElementById('openValidationWordsModalButton');
             const openUsageHelpModalButton = document.getElementById('openUsageHelpModalButton');
+            const openExtensionHelpModalButton = document.getElementById('openExtensionHelpModalButton');
             const namingValidateButton = document.getElementById('namingValidateButton');
             const namingToolStatus = document.getElementById('namingToolStatus');
             const namingToolError = document.getElementById('namingToolError');
             const namingToolResult = document.getElementById('namingToolResult');
+            const jobNamingTestStatus = document.getElementById('jobNamingTestStatus');
+            const jobNamingTestSummary = document.getElementById('jobNamingTestSummary');
+            const jobNamingTabNonGendered = document.getElementById('jobNamingTabNonGendered');
+            const jobNamingTabGendered = document.getElementById('jobNamingTabGendered');
+            const jobNamingSortByCode = document.getElementById('jobNamingSortByCode');
+            const jobNamingSortByName = document.getElementById('jobNamingSortByName');
+            const jobNamingActiveTabSummary = document.getElementById('jobNamingActiveTabSummary');
+            const jobNamingTestTableBody = document.getElementById('jobNamingTestTableBody');
+            const jobNamingEmptyState = document.getElementById('jobNamingEmptyState');
             const validationWordsModal = document.getElementById('validationWordsModal');
             const closeValidationWordsModalButton = document.getElementById('closeValidationWordsModalButton');
             const validationWordsCount = document.getElementById('validationWordsCount');
@@ -887,6 +1140,8 @@
             const validationWordsList = document.getElementById('validationWordsList');
             const usageHelpModal = document.getElementById('usageHelpModal');
             const closeUsageHelpModalButton = document.getElementById('closeUsageHelpModalButton');
+            const extensionHelpModal = document.getElementById('extensionHelpModal');
+            const closeExtensionHelpModalButton = document.getElementById('closeExtensionHelpModalButton');
             
             // --- Sorting Elements ---
             const sortByNameButton = document.getElementById('sort-by-name');
@@ -924,6 +1179,17 @@
             let namingToolLoadedKeys = [];
             let namingToolSheetOptions = [...DEFAULT_SHEET_OPTIONS];
             let namingToolIsLoading = false;
+            let activeJobNamingVersionTab = 'nonGendered';
+            let activeJobNamingSortTab = 'code';
+            let activeJobStandardListTab = 'all';
+            let jobNamingResultsCache = {
+                all: [],
+                gendered: [],
+                nonGendered: []
+            };
+            const DOWNLOAD_GRID_STORAGE_KEY = 'downloadGridSettings';
+            const DEFAULT_DOWNLOAD_GRID_COLS = 6;
+            const DEFAULT_DOWNLOAD_GRID_HEIGHT = 180;
             
             // --- Event Listeners ---
             authButton.addEventListener('click', startAuthentication);
@@ -967,11 +1233,32 @@
             });
             
             // Modal Listeners
-            closeDownloadModal.addEventListener('click', () => downloadModal.classList.add('hidden'));
+            closeDownloadModal.addEventListener('click', () => {
+                closeDownloadImageLightbox();
+                downloadModal.classList.add('hidden');
+            });
             downloadModal.addEventListener('click', (e) => {
                 if (e.target === downloadModal) {
+                    closeDownloadImageLightbox();
                     downloadModal.classList.add('hidden');
                 }
+            });
+            imageContainer.addEventListener('click', handleDownloadImageClick);
+            closeDownloadImageLightboxButton.addEventListener('click', closeDownloadImageLightbox);
+            downloadImageLightbox.addEventListener('click', (event) => {
+                if (event.target === downloadImageLightbox) {
+                    closeDownloadImageLightbox();
+                }
+            });
+            document.addEventListener('keydown', (event) => {
+                if (event.key === 'Escape' && !downloadImageLightbox.classList.contains('hidden')) {
+                    closeDownloadImageLightbox();
+                }
+            });
+            downloadGridColsRange.addEventListener('input', applyDownloadGridFromControls);
+            downloadGridHeightRange.addEventListener('input', applyDownloadGridFromControls);
+            downloadGridResetButton.addEventListener('click', () => {
+                applyDownloadGridSettings(DEFAULT_DOWNLOAD_GRID_COLS, DEFAULT_DOWNLOAD_GRID_HEIGHT, true);
             });
             
             // Context Menu & Naming Modal Listeners
@@ -999,7 +1286,7 @@
                 hideContextMenu();
             });
             contextMenuNamingTest.addEventListener('click', () => {
-                openNamingToolModal();
+                openJobNamingTestModal();
                 hideContextMenu();
             });
             contextMenuShowInTree.addEventListener('click', () => {
@@ -1021,12 +1308,64 @@
                 }
                 hideContextMenu();
             });
-            openNamingToolModalButton.addEventListener('click', openNamingToolModal);
+            if (openJobStandardListModalButton) {
+                openJobStandardListModalButton.addEventListener('click', openJobStandardListModal);
+            }
             closeModalButton.addEventListener('click', closeNamingToolModal);
             namingTestModal.addEventListener('click', (e) => {
                 if (e.target === namingTestModal) {
                     closeNamingToolModal();
                 }
+            });
+            closeJobNamingTestModalButton.addEventListener('click', closeJobNamingTestModal);
+            jobNamingTestModal.addEventListener('click', (e) => {
+                if (e.target === jobNamingTestModal) {
+                    closeJobNamingTestModal();
+                }
+            });
+            if (closeJobStandardListModalButton) {
+                closeJobStandardListModalButton.addEventListener('click', closeJobStandardListModal);
+            }
+            if (jobStandardListModal) {
+                jobStandardListModal.addEventListener('click', (e) => {
+                    if (e.target === jobStandardListModal) {
+                        closeJobStandardListModal();
+                    }
+                });
+            }
+            if (jobStandardListTabAll) {
+                jobStandardListTabAll.addEventListener('click', () => {
+                    activeJobStandardListTab = 'all';
+                    renderJobStandardListModal();
+                });
+            }
+            if (jobStandardListTabNonGendered) {
+                jobStandardListTabNonGendered.addEventListener('click', () => {
+                    activeJobStandardListTab = 'nonGendered';
+                    renderJobStandardListModal();
+                });
+            }
+            if (jobStandardListTabGendered) {
+                jobStandardListTabGendered.addEventListener('click', () => {
+                    activeJobStandardListTab = 'gendered';
+                    renderJobStandardListModal();
+                });
+            }
+            jobNamingTabNonGendered.addEventListener('click', () => {
+                activeJobNamingVersionTab = 'nonGendered';
+                renderJobNamingResultTabs();
+            });
+            jobNamingTabGendered.addEventListener('click', () => {
+                activeJobNamingVersionTab = 'gendered';
+                renderJobNamingResultTabs();
+            });
+            jobNamingSortByCode.addEventListener('click', () => {
+                activeJobNamingSortTab = 'code';
+                renderJobNamingResultTabs();
+            });
+            jobNamingSortByName.addEventListener('click', () => {
+                activeJobNamingSortTab = 'name';
+                renderJobNamingResultTabs();
             });
             openValidationWordsModalButton.addEventListener('click', openValidationWordsModal);
             closeValidationWordsModalButton.addEventListener('click', closeValidationWordsModal);
@@ -1040,6 +1379,13 @@
             usageHelpModal.addEventListener('click', (e) => {
                 if (e.target === usageHelpModal) {
                     closeUsageHelpModal();
+                }
+            });
+            openExtensionHelpModalButton.addEventListener('click', openExtensionHelpModal);
+            closeExtensionHelpModalButton.addEventListener('click', closeExtensionHelpModal);
+            extensionHelpModal.addEventListener('click', (e) => {
+                if (e.target === extensionHelpModal) {
+                    closeExtensionHelpModal();
                 }
             });
             validationWordsSearchInput.addEventListener('input', renderValidationWordsList);
@@ -1068,6 +1414,7 @@
             
             function initializeApp() {
                 initializeTheme();
+                initializeDownloadGridControls();
                 hideAuthFailureOverlay();
                 if (!ensureDropboxAuthConfig()) {
                     return;
@@ -2386,13 +2733,9 @@
             progressContainerWrapper.classList.remove('hidden');
             
             filePathsToDownload.forEach(path => {
-                const placeholder = document.createElement('div');
-                placeholder.className = 'image-placeholder-item';
-                placeholder.dataset.path = path;
-                const loader = document.createElement('div');
-                loader.className = 'placeholder-loader';
-                placeholder.appendChild(loader);
-                imageContainer.appendChild(placeholder);
+                const fileName = path.substring(path.lastIndexOf('/') + 1);
+                const imageCard = createDownloadImageCard(fileName, path);
+                imageContainer.appendChild(imageCard);
             });
             
             const totalFiles = filePathsToDownload.length;
@@ -2429,8 +2772,9 @@
                     if (response.ok) return response.blob();
                     return Promise.reject(new Error(`다운로드 실패`));
                 })
-                .then(blob => {
-                    displayImage(blob, path.substring(path.lastIndexOf('/') + 1), path);
+                .then(async blob => {
+                    const fileName = path.substring(path.lastIndexOf('/') + 1);
+                    await displayDownloadedFile(blob, fileName, path);
                     successCount++;
                 })
                 .catch(error => console.error(error))
@@ -2539,6 +2883,24 @@
             imagePreviewPopover.classList.add('hidden');
             if (popoverImage.src.startsWith('blob:')) URL.revokeObjectURL(popoverImage.src);
             popoverImage.src = '';
+        }
+
+        function handleDownloadImageClick(event) {
+            const clickedImage = event.target.closest('.download-image-visual img');
+            if (!clickedImage || !clickedImage.src) return;
+            openDownloadImageLightbox(clickedImage.src, clickedImage.alt || clickedImage.title || '이미지 확대보기');
+        }
+
+        function openDownloadImageLightbox(imageSrc, imageAlt = '이미지 확대보기') {
+            hidePreviewPopover();
+            downloadImageLightboxImage.src = imageSrc;
+            downloadImageLightboxImage.alt = imageAlt;
+            downloadImageLightbox.classList.remove('hidden');
+        }
+
+        function closeDownloadImageLightbox() {
+            downloadImageLightbox.classList.add('hidden');
+            downloadImageLightboxImage.src = '';
         }
         
         // --- Context Menu Logic ---
@@ -2757,6 +3119,269 @@
         function closeNamingToolModal() {
             namingTestModal.classList.add('hidden');
         }
+
+        function openJobNamingTestModal() {
+            jobNamingTestModal.classList.remove('hidden');
+            activeJobNamingVersionTab = 'nonGendered';
+            activeJobNamingSortTab = 'code';
+            runJobNamingTest();
+        }
+
+        function closeJobNamingTestModal() {
+            jobNamingTestModal.classList.add('hidden');
+        }
+
+        function openJobStandardListModal() {
+            if (!jobStandardListModal || !jobStandardListTableBody || !jobStandardListCount) return;
+            activeJobStandardListTab = 'all';
+            renderJobStandardListModal();
+            jobStandardListModal.classList.remove('hidden');
+        }
+
+        function closeJobStandardListModal() {
+            if (!jobStandardListModal) return;
+            jobStandardListModal.classList.add('hidden');
+        }
+
+        function renderJobStandardListModal() {
+            if (!jobStandardListTableBody || !jobStandardListCount) return;
+            const genderedCount = JOB_NAMING_RULES.filter((rule) => isGenderedJobRule(rule.en)).length;
+            const nonGenderedCount = JOB_NAMING_RULES.length - genderedCount;
+            let filteredRules = JOB_NAMING_RULES;
+            if (activeJobStandardListTab === 'gendered') {
+                // 요청사항: 성별 포함 탭에서 전체 직업 리스트를 표기한다.
+                filteredRules = JOB_NAMING_RULES;
+            } else if (activeJobStandardListTab === 'nonGendered') {
+                filteredRules = JOB_NAMING_RULES.filter((rule) => !isGenderedJobRule(rule.en));
+            }
+            const tabLabelMap = {
+                all: '전체',
+                nonGendered: '성별 비포함',
+                gendered: '성별 포함'
+            };
+            jobStandardListCount.textContent = `현재 탭: ${tabLabelMap[activeJobStandardListTab]} | ${filteredRules.length}개 (전체 ${JOB_NAMING_RULES.length}개, 성별 비포함 ${nonGenderedCount}개 / 성별 포함 ${genderedCount}개)`;
+            setJobStandardListTabButtonStyles();
+            jobStandardListTableBody.innerHTML = filteredRules.map((rule) => {
+                const isGendered = isGenderedJobRule(rule.en);
+                return `
+                    <tr>
+                        <td class="px-3 py-2 text-gray-600">${rule.no}</td>
+                        <td class="px-3 py-2">${rule.ko}</td>
+                        <td class="px-3 py-2 font-mono text-xs">${rule.en}</td>
+                        <td class="px-3 py-2">
+                            <span class="${isGendered ? 'text-indigo-900 bg-indigo-100 border-indigo-300' : 'text-slate-900 bg-slate-100 border-slate-300'} inline-flex items-center px-2 py-0.5 rounded border text-xs font-semibold">
+                                ${isGendered ? '성별 포함' : '성별 비포함'}
+                            </span>
+                        </td>
+                    </tr>
+                `;
+            }).join('');
+        }
+
+        function setJobStandardListTabButtonStyles() {
+            updateJobStandardListTabButton(jobStandardListTabAll, activeJobStandardListTab === 'all');
+            updateJobStandardListTabButton(jobStandardListTabNonGendered, activeJobStandardListTab === 'nonGendered');
+            updateJobStandardListTabButton(jobStandardListTabGendered, activeJobStandardListTab === 'gendered');
+        }
+
+        function updateJobStandardListTabButton(button, isActive) {
+            if (!button) return;
+            button.classList.remove('text-gray-700', 'bg-white', 'border-gray-300', 'text-indigo-900', 'bg-indigo-100', 'border-indigo-400');
+            if (isActive) {
+                button.classList.add('text-indigo-900', 'bg-indigo-100', 'border-indigo-400');
+                return;
+            }
+            button.classList.add('text-gray-700', 'bg-white', 'border-gray-300');
+        }
+
+        function runJobNamingTest() {
+            const MIN_REQUIRED_JOB_COUNT = 10;
+            if (!Array.isArray(allEntries) || allEntries.length === 0) {
+                setJobNamingTestStatus('파일 목록이 없습니다. 먼저 새로고침으로 데이터를 불러와 주세요.', 'error');
+                jobNamingTestSummary.innerHTML = '';
+                jobNamingResultsCache = { all: [], gendered: [], nonGendered: [] };
+                renderJobNamingResultTabs();
+                jobNamingTestFolderPath.textContent = '';
+                return;
+            }
+
+            const targetFolderPath = resolveJobNamingTargetFolderPath();
+            const filesInFolder = allEntries.filter((entry) =>
+                entry['.tag'] === 'file' && getParentPath(entry.path_display) === targetFolderPath
+            );
+            const normalizedNames = filesInFolder.map((entry) => entry.name.toLowerCase());
+
+            const results = JOB_NAMING_RULES.map((rule) => {
+                const regex = createKeywordMatchRegex(rule.en);
+                const found = normalizedNames.some((name) => regex.test(name));
+                return { ...rule, found };
+            });
+
+            const genderedResults = results.filter((item) => isGenderedJobRule(item.en));
+            const nonGenderedResults = results.filter((item) => !isGenderedJobRule(item.en));
+            const foundCount = results.filter((item) => item.found).length;
+
+            jobNamingTestFolderPath.textContent = `기준 폴더: ${targetFolderPath}`;
+            if (foundCount < MIN_REQUIRED_JOB_COUNT) {
+                setJobNamingTestStatus(`사전 검사 실패: 직업명 ${MIN_REQUIRED_JOB_COUNT}개 이상 필요 (현재 ${foundCount}개)`, 'error');
+                jobNamingTestSummary.innerHTML = `
+                    <div class="mt-1 inline-flex items-center gap-2 px-3 py-2 rounded-lg border border-red-300 bg-red-50 text-red-800 font-semibold">
+                        본 검사 중단: 직업 키워드 수가 기준보다 적습니다.
+                    </div>
+                    <div class="mt-2 text-sm text-gray-700">해당 폴더 파일 수: <span class="font-semibold">${filesInFolder.length}</span>개</div>
+                `;
+                jobNamingResultsCache = { all: [], gendered: [], nonGendered: [] };
+                renderJobNamingResultTabs();
+                return;
+            }
+
+            setJobNamingTestStatus(`${filesInFolder.length}개 파일 검사 완료`, 'success');
+            jobNamingResultsCache = {
+                all: results,
+                gendered: genderedResults,
+                nonGendered: nonGenderedResults
+            };
+            renderJobNamingResultTabs();
+        }
+
+        function setJobNamingTestStatus(message, tone = 'default') {
+            const baseClass = 'mt-3 text-sm font-semibold px-3 py-2 rounded-md inline-block';
+            const toneClassMap = {
+                success: 'text-emerald-900 bg-emerald-100 border border-emerald-300',
+                error: 'text-red-900 bg-red-100 border border-red-300',
+                default: 'text-gray-700 bg-gray-100 border border-gray-200'
+            };
+
+            jobNamingTestStatus.className = `${baseClass} ${toneClassMap[tone] || toneClassMap.default}`;
+            jobNamingTestStatus.textContent = message;
+        }
+
+        function renderJobNamingResultTabs() {
+            setJobNamingTabButtonStyles();
+            const baseResults = activeJobNamingVersionTab === 'gendered'
+                ? jobNamingResultsCache.all
+                : jobNamingResultsCache.nonGendered;
+            const sortedResults = [...baseResults].sort((a, b) => {
+                if (activeJobNamingSortTab === 'name') {
+                    return a.en.localeCompare(b.en, 'en', { sensitivity: 'base' });
+                }
+                return Number(a.no) - Number(b.no);
+            });
+
+            const versionLabel = activeJobNamingVersionTab === 'gendered' ? '모든 직업 리스트(성별 포함)' : '성별 비포함';
+            const sortLabel = activeJobNamingSortTab === 'name' ? 'ABC순' : '잡코드순';
+            const matchedCount = sortedResults.filter((item) => item.found).length;
+            const mismatchedCount = sortedResults.length - matchedCount;
+            jobNamingActiveTabSummary.textContent = `${versionLabel} | ${sortLabel} | 총 ${sortedResults.length}개 / 일치 ${matchedCount}개 / 불일치 ${mismatchedCount}개`;
+
+            jobNamingTestSummary.innerHTML = `
+                <div class="flex flex-wrap items-center gap-2">
+                    <span class="inline-flex items-center px-3 py-1.5 rounded-full border border-emerald-400 bg-emerald-100 text-emerald-900 font-bold">
+                        발견 ${matchedCount}개
+                    </span>
+                    <span class="inline-flex items-center px-3 py-1.5 rounded-full border border-red-400 bg-red-100 text-red-900 font-bold">
+                        누락 ${mismatchedCount}개
+                    </span>
+                    <span class="text-sm text-gray-700 font-medium">총 ${sortedResults.length}개 직업 검사 (${versionLabel})</span>
+                </div>
+            `;
+
+            if (sortedResults.length === 0) {
+                jobNamingTestTableBody.innerHTML = '';
+                jobNamingEmptyState.classList.remove('hidden');
+                return;
+            }
+
+            jobNamingEmptyState.classList.add('hidden');
+            jobNamingTestTableBody.innerHTML = sortedResults.map((item) => `
+                <tr class="${item.found ? 'bg-white' : 'bg-red-50/60'}">
+                    <td class="px-3 py-2 text-gray-700 font-medium">${item.no}</td>
+                    <td class="px-3 py-2 ${item.found ? 'text-gray-900' : 'text-red-900 font-semibold'}">${item.ko}</td>
+                    <td class="px-3 py-2 font-mono text-xs ${item.found ? 'text-gray-700' : 'text-red-800 font-semibold'}">${item.en}</td>
+                    <td class="px-3 py-2">
+                        <span class="${item.found ? 'text-emerald-900 bg-emerald-100 border-emerald-400' : 'text-red-900 bg-red-100 border-red-400'} inline-flex items-center justify-center min-w-20 px-3 py-1 rounded-md border font-extrabold tracking-wide">
+                            ${item.found ? '일치' : '불일치'}
+                        </span>
+                    </td>
+                </tr>
+            `).join('');
+        }
+
+        function setJobNamingTabButtonStyles() {
+            updateJobNamingVersionTabButton(jobNamingTabNonGendered, activeJobNamingVersionTab === 'nonGendered');
+            updateJobNamingVersionTabButton(jobNamingTabGendered, activeJobNamingVersionTab === 'gendered');
+            updateJobNamingSortTabButton(jobNamingSortByCode, activeJobNamingSortTab === 'code');
+            updateJobNamingSortTabButton(jobNamingSortByName, activeJobNamingSortTab === 'name');
+        }
+
+        function updateJobNamingVersionTabButton(button, isActive) {
+            button.classList.remove('text-gray-700', 'bg-white', 'border-gray-300', 'text-indigo-900', 'bg-indigo-100', 'border-indigo-400');
+            if (isActive) {
+                button.classList.add('text-indigo-900', 'bg-indigo-100', 'border-indigo-400');
+                return;
+            }
+            button.classList.add('text-gray-700', 'bg-white', 'border-gray-300');
+        }
+
+        function updateJobNamingSortTabButton(button, isActive) {
+            button.classList.remove('text-gray-400', 'hover:text-gray-600', 'text-gray-800', 'border-transparent', 'border-gray-800');
+            if (isActive) {
+                button.classList.add('text-gray-800', 'border-gray-800');
+                return;
+            }
+            button.classList.add('text-gray-400', 'hover:text-gray-600', 'border-transparent');
+        }
+
+        function resolveJobNamingTargetFolderPath() {
+            const normalizePath = (path) => {
+                if (!path) return '';
+                if (path.startsWith(TEAM_ROOT_FOLDER)) return path;
+                if ((currentView === 'tree' || currentView === 'column') && path.startsWith('/')) {
+                    return `${TEAM_ROOT_FOLDER}${path}`;
+                }
+                return path;
+            };
+
+            const asFolderPath = (path) => {
+                const normalizedPath = normalizePath(path);
+                const entry = allEntries.find((item) => item.path_display === normalizedPath);
+                if (entry && entry['.tag'] === 'folder') return normalizedPath;
+                if (entry && entry['.tag'] === 'file') return getParentPath(normalizedPath);
+                if (normalizedPath) return normalizedPath;
+                return TEAM_ROOT_FOLDER;
+            };
+
+            if (currentView === 'column' && columnViewPath) {
+                return asFolderPath(columnViewPath);
+            }
+
+            const selectedPath = Array.from(selectedPaths)[0];
+            if (selectedPath) {
+                return asFolderPath(selectedPath);
+            }
+
+            if (contextMenuTargetPath) {
+                return asFolderPath(contextMenuTargetPath);
+            }
+
+            return TEAM_ROOT_FOLDER;
+        }
+
+        function getParentPath(path) {
+            if (!path || path === '/') return '/';
+            const index = path.lastIndexOf('/');
+            if (index <= 0) return '/';
+            return path.substring(0, index);
+        }
+
+        function createKeywordMatchRegex(keyword) {
+            const escapedKeyword = keyword.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+            return new RegExp(`(?:^|[^a-z0-9])${escapedKeyword}(?:[^a-z0-9]|$)`, 'i');
+        }
+
+        function isGenderedJobRule(keyword) {
+            return keyword.endsWith('_man') || keyword.endsWith('_woman');
+        }
         
         async function openValidationWordsModal() {
             validationWordsSearchInput.value = '';
@@ -2776,6 +3401,14 @@
 
         function closeUsageHelpModal() {
             usageHelpModal.classList.add('hidden');
+        }
+        
+        function openExtensionHelpModal() {
+            extensionHelpModal.classList.remove('hidden');
+        }
+        
+        function closeExtensionHelpModal() {
+            extensionHelpModal.classList.add('hidden');
         }
         
         async function ensureValidationFileWordsLoaded() {
@@ -3408,6 +4041,21 @@
             }
         }
         
+        async function displayDownloadedFile(blob, fileName, filePath) {
+            if (isImageFile(fileName)) {
+                displayImage(blob, fileName, filePath);
+                return;
+            }
+
+            if (isTextFile(fileName)) {
+                const textContent = await blob.text();
+                displayColorFromTextContent(textContent, fileName, filePath);
+                return;
+            }
+
+            displayNonImageFallback(filePath);
+        }
+
         function displayImage(blob, fileName, filePath) {
             const placeholder = document.querySelector(`.image-placeholder-item[data-path="${filePath}"]`);
             const imgElement = document.createElement('img');
@@ -3415,11 +4063,209 @@
             imgElement.alt = fileName;
             imgElement.title = fileName;
             imgElement.dataset.path = filePath;
-            imgElement.className = "w-full h-auto object-cover rounded-md shadow-sm border-2 border-gray-400";
+            imgElement.className = "shadow-sm";
             if (placeholder) {
                 placeholder.replaceWith(imgElement);
             } else {
-                imageContainer.appendChild(imgElement);
+                const imageCard = createDownloadImageCard(fileName, filePath);
+                const imageVisual = imageCard.querySelector('.download-image-visual');
+                if (imageVisual) {
+                    imageVisual.innerHTML = '';
+                    imageVisual.appendChild(imgElement);
+                }
+                imageContainer.appendChild(imageCard);
+            }
+        }
+
+        function displayColorFromTextContent(textContent, fileName, filePath) {
+            const colorCode = resolveColorCodeForTextFile(fileName, textContent);
+            if (!colorCode) {
+                displayNonImageFallback(filePath, '색상 코드 없음');
+                return;
+            }
+
+            renderColorPreview(colorCode, fileName, filePath);
+        }
+
+        function resolveColorCodeForTextFile(fileName, textContent) {
+            const colorCodeFromFileName = extractColorCodeFromFileName(fileName);
+            const colorCodeFromText = extractColorCodeFromText(textContent);
+            return colorCodeFromFileName || colorCodeFromText;
+        }
+
+        function renderColorPreview(colorCode, fileName, filePath) {
+            const colorPreview = document.createElement('div');
+            colorPreview.className = 'download-color-preview';
+            colorPreview.style.backgroundColor = colorCode;
+            colorPreview.title = `${fileName}: ${colorCode}`;
+
+            const colorCodeLabel = document.createElement('span');
+            colorCodeLabel.className = 'download-color-code';
+            colorCodeLabel.textContent = colorCode;
+            colorPreview.appendChild(colorCodeLabel);
+
+            replaceImagePlaceholder(filePath, colorPreview, fileName);
+        }
+
+        function displayNonImageFallback(filePath, label = '미리보기 없음') {
+            const fallback = document.createElement('div');
+            fallback.className = 'download-text-fallback';
+            fallback.textContent = label;
+            replaceImagePlaceholder(filePath, fallback, label);
+        }
+
+        function replaceImagePlaceholder(filePath, node, fileName) {
+            const placeholder = document.querySelector(`.image-placeholder-item[data-path="${filePath}"]`);
+            node.dataset.path = filePath;
+            node.title = fileName;
+
+            if (placeholder) {
+                placeholder.replaceWith(node);
+            } else {
+                const imageCard = createDownloadImageCard(fileName, filePath);
+                const imageVisual = imageCard.querySelector('.download-image-visual');
+                if (imageVisual) {
+                    imageVisual.innerHTML = '';
+                    imageVisual.appendChild(node);
+                }
+                imageContainer.appendChild(imageCard);
+            }
+        }
+
+        function extractColorCodeFromText(textContent) {
+            const hexMatch = textContent.match(/#(?:[0-9a-fA-F]{8}|[0-9a-fA-F]{6}|[0-9a-fA-F]{4}|[0-9a-fA-F]{3})\b/);
+            if (hexMatch) {
+                return hexMatch[0];
+            }
+
+            const rgbMatch = textContent.match(/rgba?\(\s*(?:\d{1,3}\s*,\s*){2}\d{1,3}(?:\s*,\s*(?:0|1|0?\.\d+))?\s*\)/i);
+            if (rgbMatch) {
+                return rgbMatch[0];
+            }
+
+            return null;
+        }
+
+        function extractColorCodeFromFileName(fileName) {
+            const baseName = fileName.replace(/\.[^/.]+$/, '');
+
+            // 1) #RRGGBB / #RGB / #RRGGBBAA / #RGBA 형태
+            const hashHexMatch = baseName.match(/#(?:[0-9a-fA-F]{8}|[0-9a-fA-F]{6}|[0-9a-fA-F]{4}|[0-9a-fA-F]{3})\b/);
+            if (hashHexMatch) {
+                return hashHexMatch[0];
+            }
+
+            // 2) RRGGBB / RGB 형태(앞뒤가 영숫자가 아닌 토큰)
+            const plainHexMatch = baseName.match(/(?:^|[^0-9a-zA-Z])([0-9a-fA-F]{6}|[0-9a-fA-F]{3})(?:$|[^0-9a-zA-Z])/);
+            if (plainHexMatch) {
+                return `#${plainHexMatch[1]}`;
+            }
+
+            // 3) rgb(255,0,0), rgba(255,0,0,0.5) 형태
+            const rgbMatch = baseName.match(/rgba?\(\s*(?:\d{1,3}\s*,\s*){2}\d{1,3}(?:\s*,\s*(?:0|1|0?\.\d+))?\s*\)/i);
+            if (rgbMatch) {
+                return rgbMatch[0];
+            }
+
+            return null;
+        }
+
+        function isImageFile(fileName) {
+            return /\.(jpg|jpeg|png|webp|gif|heic|heif)$/i.test(fileName);
+        }
+
+        function isTextFile(fileName) {
+            return /\.txt$/i.test(fileName);
+        }
+
+        function createDownloadImageCard(fileName, filePath) {
+            const imageCard = document.createElement('div');
+            imageCard.className = 'download-image-card';
+
+            const imageVisual = document.createElement('div');
+            imageVisual.className = 'download-image-visual';
+
+            const placeholder = document.createElement('div');
+            placeholder.className = 'image-placeholder-item';
+            placeholder.dataset.path = filePath;
+
+            const loader = document.createElement('div');
+            loader.className = 'placeholder-loader';
+            placeholder.appendChild(loader);
+
+            const caption = document.createElement('p');
+            caption.className = 'download-image-caption';
+            caption.textContent = fileName;
+            caption.title = fileName;
+
+            imageVisual.appendChild(placeholder);
+            imageCard.appendChild(imageVisual);
+            imageCard.appendChild(caption);
+
+            return imageCard;
+        }
+
+        function formatMiddleEllipsisFileName(fileName, maxLength = 24) {
+            if (!fileName || fileName.length <= maxLength) {
+                return fileName;
+            }
+
+            const lastDotIndex = fileName.lastIndexOf('.');
+            const hasExtension = lastDotIndex > 0 && lastDotIndex < fileName.length - 1;
+            const extension = hasExtension ? fileName.substring(lastDotIndex) : '';
+            const baseName = hasExtension ? fileName.substring(0, lastDotIndex) : fileName;
+            const ellipsis = '...';
+
+            // Keep extension visible while preserving both start and end of base name.
+            const availableForBase = maxLength - extension.length - ellipsis.length;
+            if (availableForBase <= 4) {
+                const head = fileName.substring(0, Math.max(2, maxLength - ellipsis.length - 2));
+                const tail = fileName.substring(fileName.length - 2);
+                return `${head}${ellipsis}${tail}`;
+            }
+
+            const headLength = Math.ceil(availableForBase / 2);
+            const tailLength = Math.floor(availableForBase / 2);
+            const head = baseName.substring(0, headLength);
+            const tail = baseName.substring(baseName.length - tailLength);
+            return `${head}${ellipsis}${tail}${extension}`;
+        }
+
+        function initializeDownloadGridControls() {
+            let cols = DEFAULT_DOWNLOAD_GRID_COLS;
+            let height = DEFAULT_DOWNLOAD_GRID_HEIGHT;
+
+            try {
+                const stored = JSON.parse(localStorage.getItem(DOWNLOAD_GRID_STORAGE_KEY) || '{}');
+                if (Number.isFinite(stored.cols)) cols = stored.cols;
+                if (Number.isFinite(stored.height)) height = stored.height;
+            } catch (error) {
+                console.warn('그리드 설정 로드 실패:', error);
+            }
+
+            applyDownloadGridSettings(cols, height, false);
+        }
+
+        function applyDownloadGridFromControls() {
+            const cols = Number(downloadGridColsRange.value);
+            const height = Number(downloadGridHeightRange.value);
+            applyDownloadGridSettings(cols, height, true);
+        }
+
+        function applyDownloadGridSettings(cols, height, shouldPersist) {
+            const safeCols = Math.min(10, Math.max(2, Number(cols) || DEFAULT_DOWNLOAD_GRID_COLS));
+            const safeHeight = Math.min(280, Math.max(120, Number(height) || DEFAULT_DOWNLOAD_GRID_HEIGHT));
+
+            imageContainer.style.gridTemplateColumns = `repeat(${safeCols}, minmax(0, 1fr))`;
+            imageContainer.style.setProperty('--download-card-height', `${safeHeight}px`);
+
+            downloadGridColsRange.value = String(safeCols);
+            downloadGridHeightRange.value = String(safeHeight);
+            downloadGridColsValue.textContent = String(safeCols);
+            downloadGridHeightValue.textContent = String(safeHeight);
+
+            if (shouldPersist) {
+                localStorage.setItem(DOWNLOAD_GRID_STORAGE_KEY, JSON.stringify({ cols: safeCols, height: safeHeight }));
             }
         }
         
