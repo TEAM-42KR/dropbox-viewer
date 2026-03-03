@@ -352,6 +352,29 @@
             background-color: #f3f4f6;
             transform: translateY(-1px);
         }
+        .bug-report-btn {
+            position: fixed;
+            right: 1rem;
+            bottom: 1rem;
+            z-index: 60;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            padding: 0.625rem 0.875rem;
+            border-radius: 9999px;
+            border: 1px solid #d1d5db;
+            background-color: #ffffff;
+            color: #1f2937;
+            font-size: 0.875rem;
+            font-weight: 600;
+            line-height: 1;
+            box-shadow: 0 4px 10px rgb(0 0 0 / 0.15);
+            transition: all 0.2s ease;
+        }
+        .bug-report-btn:hover {
+            background-color: #f3f4f6;
+            transform: translateY(-1px);
+        }
         .help-icon-btn {
             display: inline-flex;
             align-items: center;
@@ -390,6 +413,14 @@
         }
         html.theme-dark .theme-toggle-btn:hover {
             background-color: #2a2a2a;
+        }
+        html.theme-dark .bug-report-btn {
+            background-color: #1a1a1a;
+            border-color: #3a3a3a;
+            color: #f5f5f5;
+        }
+        html.theme-dark .bug-report-btn:hover {
+            background-color: #242424;
         }
         html.theme-dark .help-icon-btn {
             border-color: #5a5a5a;
@@ -485,6 +516,7 @@
 </head>
 <body class="bg-gray-100">
     <button id="themeToggleButton" class="theme-toggle-btn" type="button" title="다크/라이트 테마 전환" aria-label="다크/라이트 테마 전환">🌙</button>
+    <a id="bugReportButton" class="bug-report-btn" href="mailto:appleboy@team42.co.kr?subject=Dropbox%20Viewer%20Bug%20Report" title="버그 리포트 메일 보내기" aria-label="버그 리포트 메일 보내기">버그 리포트</a>
     
     <div class="flex h-screen">
         <!-- Left Sidebar -->
@@ -769,7 +801,7 @@
     </div>
     
     <div id="namingTestModal" class="hidden fixed inset-0 bg-black bg-opacity-50 z-50 flex items-center justify-center p-4">
-        <div class="bg-white rounded-lg shadow-xl p-6 w-full max-w-3xl max-h-[90vh] overflow-y-auto">
+        <div class="bg-white rounded-lg shadow-xl p-6 w-full max-w-3xl h-[90vh] flex flex-col overflow-hidden">
             <div class="flex justify-between items-center mb-4 gap-4">
                 <h2 class="text-xl font-bold">구글시트 네이밍 도구</h2>
                 <button id="closeModalButton" class="text-gray-500 hover:text-gray-800 text-3xl leading-none">&times;</button>
@@ -835,7 +867,7 @@
     </div>
 
     <div id="jobStandardListModal" class="hidden fixed inset-0 bg-black bg-opacity-50 z-50 flex items-center justify-center p-4">
-        <div class="bg-white rounded-lg shadow-xl p-6 w-full max-w-3xl max-h-[90vh] overflow-y-auto">
+        <div class="bg-white rounded-lg shadow-xl p-6 w-full max-w-3xl h-[90vh] flex flex-col overflow-hidden">
             <div class="flex justify-between items-center mb-3 gap-4">
                 <h2 class="text-xl font-bold">직업 리스트 표준</h2>
                 <button id="closeJobStandardListModalButton" class="text-gray-500 hover:text-gray-800 text-3xl leading-none" type="button">&times;</button>
@@ -845,8 +877,14 @@
                 <button id="jobStandardListTabNonGendered" type="button" class="px-3 py-1.5 rounded-md text-xs font-semibold border">성별 비포함</button>
                 <button id="jobStandardListTabGendered" type="button" class="px-3 py-1.5 rounded-md text-xs font-semibold border">성별 포함</button>
             </div>
+            <input
+                id="jobStandardListSearchInput"
+                type="search"
+                placeholder="한글/영문 직업명 검색..."
+                class="w-full border border-gray-300 p-2 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent mb-3"
+            >
             <div id="jobStandardListCount" class="text-sm text-gray-700 mb-3"></div>
-            <div class="max-h-[65vh] overflow-auto border border-gray-200 rounded-lg">
+            <div class="flex-grow min-h-0 overflow-auto border border-gray-200 rounded-lg">
                 <table class="w-full text-sm">
                     <thead class="bg-gray-50 sticky top-0">
                         <tr>
@@ -1115,6 +1153,7 @@
             const jobStandardListTabAll = document.getElementById('jobStandardListTabAll');
             const jobStandardListTabNonGendered = document.getElementById('jobStandardListTabNonGendered');
             const jobStandardListTabGendered = document.getElementById('jobStandardListTabGendered');
+            const jobStandardListSearchInput = document.getElementById('jobStandardListSearchInput');
             const jobStandardListCount = document.getElementById('jobStandardListCount');
             const jobStandardListTableBody = document.getElementById('jobStandardListTableBody');
             const openValidationWordsModalButton = document.getElementById('openValidationWordsModalButton');
@@ -1182,6 +1221,7 @@
             let activeJobNamingVersionTab = 'nonGendered';
             let activeJobNamingSortTab = 'code';
             let activeJobStandardListTab = 'all';
+            let activeJobStandardListSearchQuery = '';
             let jobNamingResultsCache = {
                 all: [],
                 gendered: [],
@@ -1348,6 +1388,12 @@
             if (jobStandardListTabGendered) {
                 jobStandardListTabGendered.addEventListener('click', () => {
                     activeJobStandardListTab = 'gendered';
+                    renderJobStandardListModal();
+                });
+            }
+            if (jobStandardListSearchInput) {
+                jobStandardListSearchInput.addEventListener('input', () => {
+                    activeJobStandardListSearchQuery = jobStandardListSearchInput.value.trim().toLowerCase();
                     renderJobStandardListModal();
                 });
             }
@@ -3134,6 +3180,10 @@
         function openJobStandardListModal() {
             if (!jobStandardListModal || !jobStandardListTableBody || !jobStandardListCount) return;
             activeJobStandardListTab = 'all';
+            activeJobStandardListSearchQuery = '';
+            if (jobStandardListSearchInput) {
+                jobStandardListSearchInput.value = '';
+            }
             renderJobStandardListModal();
             jobStandardListModal.classList.remove('hidden');
         }
@@ -3154,13 +3204,28 @@
             } else if (activeJobStandardListTab === 'nonGendered') {
                 filteredRules = JOB_NAMING_RULES.filter((rule) => !isGenderedJobRule(rule.en));
             }
+            if (activeJobStandardListSearchQuery) {
+                filteredRules = filteredRules.filter((rule) =>
+                    rule.ko.toLowerCase().includes(activeJobStandardListSearchQuery) ||
+                    rule.en.toLowerCase().includes(activeJobStandardListSearchQuery)
+                );
+            }
             const tabLabelMap = {
                 all: '전체',
                 nonGendered: '성별 비포함',
                 gendered: '성별 포함'
             };
-            jobStandardListCount.textContent = `현재 탭: ${tabLabelMap[activeJobStandardListTab]} | ${filteredRules.length}개 (전체 ${JOB_NAMING_RULES.length}개, 성별 비포함 ${nonGenderedCount}개 / 성별 포함 ${genderedCount}개)`;
+            const searchLabel = activeJobStandardListSearchQuery ? ` | 검색: "${activeJobStandardListSearchQuery}"` : '';
+            jobStandardListCount.textContent = `현재 탭: ${tabLabelMap[activeJobStandardListTab]}${searchLabel} | ${filteredRules.length}개 (전체 ${JOB_NAMING_RULES.length}개, 성별 비포함 ${nonGenderedCount}개 / 성별 포함 ${genderedCount}개)`;
             setJobStandardListTabButtonStyles();
+            if (filteredRules.length === 0) {
+                jobStandardListTableBody.innerHTML = `
+                    <tr>
+                        <td colspan="4" class="px-3 py-6 text-center text-gray-500">검색 결과가 없습니다.</td>
+                    </tr>
+                `;
+                return;
+            }
             jobStandardListTableBody.innerHTML = filteredRules.map((rule) => {
                 const isGendered = isGenderedJobRule(rule.en);
                 return `
